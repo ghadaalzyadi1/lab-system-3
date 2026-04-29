@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>إضافة جهاز</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="page-header">
+  <button class="back-btn" onclick="history.back()">← رجوع</button>
+  <h1>إضافة جهاز جديد</h1>
+</div>
+
+<div class="container">
+  <div style="display:grid; grid-template-columns:1fr 340px; gap:24px">
+
+    <!-- النموذج -->
+    <div>
+      <div class="form-card">
+        <h2 class="section-title" style="margin-bottom:20px">بيانات الجهاز</h2>
+        <div class="form-grid">
+
+          <div class="form-group">
+            <label>اسم الجهاز *</label>
+            <input id="name" placeholder="مثال: HPLC Agilent 1260" oninput="previewQR()">
+          </div>
+
+          <div class="form-group">
+            <label>الرقم التسلسلي *</label>
+            <input id="serial" placeholder="مثال: SN-2024-001" oninput="previewQR()">
+          </div>
+
+          <div class="form-group">
+            <label>كود الجودة *</label>
+            <input id="qcode" placeholder="مثال: QC-TOX-001" oninput="previewQR()">
+          </div>
+
+          <div class="form-group">
+            <label>القسم</label>
+            <select id="dept">
+              <option value="">اختر القسم</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>نوع الجهاز</label>
+            <select id="dtype">
+              <option value="primary">جهاز رئيسي</option>
+              <option value="support">جهاز مساند</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>تاريخ المعايرة</label>
+            <input type="date" id="cal-date">
+          </div>
+
+          <div class="form-group">
+            <label>تاريخ المعايرة القادمة</label>
+            <input type="date" id="next-cal-date">
+          </div>
+
+          <div class="form-group full">
+            <label>ملاحظات</label>
+            <textarea id="notes" placeholder="أي ملاحظات إضافية..."></textarea>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-secondary" onclick="history.back()">إلغاء</button>
+        <button class="btn-primary" onclick="saveDevice()">حفظ الجهاز ✓</button>
+      </div>
+    </div>
+
+    <!-- QR Code -->
+    <div>
+      <div class="form-card">
+        <h2 class="section-title" style="margin-bottom:16px">QR Code</h2>
+        <div class="qr-box">
+          <canvas id="qr-canvas" style="display:none; margin:0 auto; border-radius:8px"></canvas>
+          <div class="qr-placeholder" id="qr-placeholder">
+            <div style="font-size:40px">📱</div>
+            <p style="margin-top:8px; font-size:13px">يظهر هنا عند إدخال بيانات الجهاز</p>
+          </div>
+        </div>
+
+        <button onclick="downloadQR()" id="download-btn" style="display:none; margin-top:12px; width:100%"
+          class="btn-secondary">⬇️ تحميل QR Code</button>
+
+        <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:12px; margin-top:12px">
+          <p style="font-size:12px; color:#92400e; font-weight:600">💡 محتوى الـ QR</p>
+          <p style="font-size:12px; color:#78350f; margin-top:4px; line-height:1.7">
+            اسم الجهاز + الرقم التسلسلي + كود الجودة<br>
+            عند المسح يفتح ملف الجهاز مباشرة
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// تحميل الأقسام
+db.from('departments').select('*').then(({ data }) => {
+  if (data) data.forEach(d => {
+    const o = document.createElement('option');
+    o.value = d.id; o.textContent = d.name_ar;
+    document.getElementById('dept').appendChild(o);
+  });
+});
+
+// توليد QR تلقائي عند الكتابة
+async function previewQR() {
+  const name   = document.getElementById('name').value.trim();
+  const serial = document.getElementById('serial').value.trim();
+  const qcode  = document.getElementById('qcode').value.trim();
+  if (!name && !serial && !qcode) return;
+
+  const canvas = document.getElementById('qr-canvas');
+  const data = JSON.stringify({ name, serial, code: qcode, url: location.origin });
+  await QRCode.toCanvas(canvas, data, { width: 200, margin: 2 });
+  canvas.style.display = 'block';
+  document.getElementById('qr-placeholder').style.display = 'none';
+  document.getElementById('download-btn').style.display = 'block';
+}
+
+function downloadQR() {
+  const canvas = document.getElementById('qr-canvas');
+  const serial = document.getElementById('serial').value || 'device';
+  const link = document.createElement('a');
+  link.download = `QR-${serial}.png`;
+  link.href = canvas.toDataURL();
+  link.click();
+}
+
+async function saveDevice() {
+  const name   = document.getElementById('name').value.trim();
+  const serial = document.getElementById('serial').value.trim();
+  const qcode  = document.getElementById('qcode').value.trim();
+
+  if (!name || !serial || !qcode) {
+    alert('يرجى ملء الحقول الإلزامية: الاسم، الرقم التسلسلي، كود الجودة');
+    return;
+  }
+
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'جاري الحفظ...';
+
+  const qrData = JSON.stringify({ name, serial, code: qcode, url: location.origin });
+
+  const { error } = await db.from('devices').insert([{
+    name,
+    serial_number:         serial,
+    quality_code:          qcode,
+    department_id:         document.getElementById('dept').value   || null,
+    device_type:           document.getElementById('dtype').value,
+    calibration_date:      document.getElementById('cal-date').value      || null,
+    next_calibration_date: document.getElementById('next-cal-date').value || null,
+    notes:                 document.getElementById('notes').value.trim()   || null,
+    qr_data:               qrData,
+  }]);
+
+  if (error) {
+    alert('حدث خطأ: ' + error.message);
+    btn.disabled = false;
+    btn.textContent = 'حفظ الجهاز ✓';
+    return;
+  }
+
+  location.href = 'index.html';
+}
+</script>
+</body>
+</html>
