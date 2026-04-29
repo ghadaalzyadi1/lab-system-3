@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>القسم</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="page-header">
+  <button class="back-btn" onclick="history.back()">← رجوع</button>
+  <h1 id="dept-title">جاري التحميل...</h1>
+  <a href="add-device.html" class="btn-primary" style="margin-right:auto">+ إضافة جهاز</a>
+</div>
+
+<div class="container">
+  <div class="filters">
+    <button class="filter-btn active" onclick="setFilter('all',this)">الكل</button>
+    <button class="filter-btn" onclick="setFilter('primary',this)">رئيسية</button>
+    <button class="filter-btn" onclick="setFilter('support',this)">مساندة</button>
+    <button class="filter-btn" onclick="setFilter('alert',this)">تحتاج انتباه</button>
+  </div>
+
+  <div id="primary-section">
+    <h2 class="section-title">🔧 الأجهزة الرئيسية</h2>
+    <div class="devices-grid" id="primary-list"></div>
+  </div>
+
+  <div id="support-section" style="margin-top:28px">
+    <h2 class="section-title">🔩 الأجهزة المساندة</h2>
+    <div class="devices-grid" id="support-list"></div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+const slug = new URLSearchParams(location.search).get('slug');
+let allDevices = [];
+
+const statusMap = {
+  valid:         { label:'ساري',           cls:'badge-valid'   },
+  expiring_soon: { label:'ينتهي قريباً',   cls:'badge-soon'    },
+  expired:       { label:'منتهي الصلاحية', cls:'badge-expired' },
+};
+
+function deviceCard(d) {
+  const s = statusMap[d.calibration_status] || statusMap.valid;
+  return `
+    <a href="device.html?id=${d.id}" class="device-card">
+      <div class="device-header">
+        <span class="device-name">${d.name}</span>
+        <span class="badge ${s.cls}">${s.label}</span>
+      </div>
+      <p class="device-meta">الرقم التسلسلي: ${d.serial_number}</p>
+      <p class="device-meta">كود الجودة: ${d.quality_code}</p>
+      ${d.next_calibration_date ? `<p class="device-date">المعايرة القادمة: ${new Date(d.next_calibration_date).toLocaleDateString('ar-SA')}</p>` : ''}
+    </a>`;
+}
+
+function renderLists(devices) {
+  const primary = devices.filter(d => d.device_type === 'primary');
+  const support  = devices.filter(d => d.device_type === 'support');
+
+  document.getElementById('primary-section').style.display = primary.length ? 'block' : 'none';
+  document.getElementById('support-section').style.display = support.length  ? 'block' : 'none';
+
+  document.getElementById('primary-list').innerHTML = primary.length
+    ? primary.map(deviceCard).join('')
+    : '<p class="loading">لا توجد أجهزة رئيسية</p>';
+
+  document.getElementById('support-list').innerHTML = support.length
+    ? support.map(deviceCard).join('')
+    : '<p class="loading">لا توجد أجهزة مساندة</p>';
+}
+
+function setFilter(f, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (f === 'all')     renderLists(allDevices);
+  if (f === 'primary') renderLists(allDevices.filter(d => d.device_type === 'primary'));
+  if (f === 'support') renderLists(allDevices.filter(d => d.device_type === 'support'));
+  if (f === 'alert')   renderLists(allDevices.filter(d => d.calibration_status !== 'valid'));
+}
+
+async function load() {
+  const { data: dept } = await db.from('departments').select('*').eq('slug', slug).single();
+  if (!dept) { document.getElementById('dept-title').textContent = 'القسم غير موجود'; return; }
+  document.title = dept.name_ar;
+  document.getElementById('dept-title').textContent = dept.name_ar;
+
+  const { data: devs } = await db.from('devices').select('*').eq('department_id', dept.id);
+  allDevices = devs || [];
+  renderLists(allDevices);
+}
+
+load();
+</script>
+</body>
+</html>
