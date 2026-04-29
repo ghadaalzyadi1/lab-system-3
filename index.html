@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>منصة إدارة أجهزة المختبر</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="header">
+  <div class="header-content">
+    <div>
+      <h1>🔬 منصة إدارة أجهزة المختبر</h1>
+      <p class="header-sub">نظام متكامل للمراقبة والمعايرة</p>
+    </div>
+    <a href="add-device.html" class="btn-primary">+ إضافة جهاز</a>
+  </div>
+</header>
+
+<main class="container">
+
+  <!-- إحصائيات -->
+  <div class="stats-grid" id="stats">
+    <div class="stat-card blue">
+      <p class="stat-label">إجمالي الأجهزة</p>
+      <p class="stat-num" id="s-total">—</p>
+    </div>
+    <div class="stat-card green">
+      <p class="stat-label">معايرة سارية</p>
+      <p class="stat-num" id="s-valid">—</p>
+    </div>
+    <div class="stat-card yellow">
+      <p class="stat-label">تنتهي قريباً</p>
+      <p class="stat-num" id="s-soon">—</p>
+    </div>
+    <div class="stat-card red">
+      <p class="stat-label">منتهية الصلاحية</p>
+      <p class="stat-num" id="s-expired">—</p>
+    </div>
+  </div>
+
+  <!-- تنبيهات -->
+  <div id="alerts-box" style="display:none" class="alerts-box">
+    <h2 class="section-title">⚠️ تحتاج انتباهاً</h2>
+    <div id="alerts-list"></div>
+  </div>
+
+  <!-- الأقسام -->
+  <h2 class="section-title">الأقسام</h2>
+  <div class="dept-grid" id="dept-grid">
+    <div class="loading">جاري التحميل...</div>
+  </div>
+
+</main>
+
+<script src="config.js"></script>
+<script>
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const deptColors = ['#6366f1','#0891b2','#16a34a','#dc2626','#9333ea'];
+const deptIcons  = ['☠️','💊','🌿','🧪','🍽️'];
+
+async function loadDashboard() {
+  // الإحصائيات
+  const { data: devs } = await db.from('devices').select('calibration_status, name, next_calibration_date, id');
+  if (devs) {
+    document.getElementById('s-total').textContent   = devs.length;
+    document.getElementById('s-valid').textContent   = devs.filter(d => d.calibration_status === 'valid').length;
+    document.getElementById('s-soon').textContent    = devs.filter(d => d.calibration_status === 'expiring_soon').length;
+    document.getElementById('s-expired').textContent = devs.filter(d => d.calibration_status === 'expired').length;
+
+    // التنبيهات
+    const urgent = devs.filter(d => d.calibration_status !== 'valid');
+    if (urgent.length > 0) {
+      document.getElementById('alerts-box').style.display = 'block';
+      document.getElementById('alerts-list').innerHTML = urgent.map(d => `
+        <a href="device.html?id=${d.id}" class="alert-item ${d.calibration_status === 'expired' ? 'alert-red' : 'alert-yellow'}">
+          <span>${d.calibration_status === 'expired' ? '❌' : '⚠️'} ${d.name}</span>
+          <span>${d.calibration_status === 'expired' ? 'منتهية الصلاحية' : 'تنتهي قريباً'} — ${d.next_calibration_date || ''}</span>
+        </a>
+      `).join('');
+    }
+  }
+
+  // الأقسام
+  const { data: depts } = await db.from('departments').select('*');
+  if (depts) {
+    document.getElementById('dept-grid').innerHTML = depts.map((d, i) => `
+      <a href="department.html?slug=${d.slug}" class="dept-card" style="border-top:4px solid ${deptColors[i]}">
+        <span class="dept-icon">${deptIcons[i]}</span>
+        <p class="dept-name">${d.name_ar}</p>
+        <p class="dept-link">عرض الأجهزة ←</p>
+      </a>
+    `).join('');
+  }
+}
+
+loadDashboard();
+</script>
+</body>
+</html>
