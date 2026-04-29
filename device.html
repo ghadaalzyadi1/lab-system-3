@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>تفاصيل الجهاز</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="page-header" id="page-header">
+  <button class="back-btn" onclick="history.back()">← رجوع</button>
+  <h1 id="device-title">جاري التحميل...</h1>
+  <span id="status-badge" class="badge" style="margin-right:auto"></span>
+</div>
+
+<div class="container">
+  <div class="detail-grid">
+
+    <!-- يسار: المعلومات -->
+    <div>
+      <!-- بيانات الجهاز -->
+      <div class="info-card">
+        <h2 class="section-title" style="margin-bottom:16px">معلومات الجهاز</h2>
+        <div id="device-info"></div>
+      </div>
+
+      <!-- المعايرة -->
+      <div class="info-card">
+        <h2 class="section-title" style="margin-bottom:16px">المعايرة</h2>
+        <div class="calib-grid" id="calib-dates"></div>
+      </div>
+
+      <!-- رفع شهادة PDF -->
+      <div class="info-card">
+        <h2 class="section-title" style="margin-bottom:16px">شهادة المعايرة</h2>
+        <div class="upload-area" onclick="document.getElementById('pdf-input').click()">
+          <div style="font-size:32px">📄</div>
+          <p style="margin-top:8px; color:#64748b; font-size:14px">اضغط لرفع شهادة PDF</p>
+          <input type="file" id="pdf-input" accept=".pdf" style="display:none" onchange="uploadCertificate(this)">
+        </div>
+        <div id="cert-link" style="margin-top:12px; display:none">
+          <a id="cert-url" target="_blank" class="btn-secondary" style="display:inline-block">📄 عرض الشهادة الحالية</a>
+        </div>
+      </div>
+
+      <!-- السجل -->
+      <div class="info-card">
+        <h2 class="section-title" style="margin-bottom:16px">سجل المعايرة</h2>
+        <div id="calib-logs"><p class="loading">لا يوجد سجل</p></div>
+      </div>
+    </div>
+
+    <!-- يمين: QR -->
+    <div>
+      <div class="info-card" style="text-align:center">
+        <h2 class="section-title" style="margin-bottom:16px">QR Code</h2>
+        <canvas id="qr-canvas" style="border-radius:8px; margin:0 auto; display:block"></canvas>
+        <button onclick="downloadQR()" class="btn-secondary" style="width:100%; margin-top:12px">⬇️ تحميل QR</button>
+      </div>
+
+      <div class="info-card" style="margin-top:16px">
+        <h2 class="section-title" style="margin-bottom:12px">تحديث المعايرة</h2>
+        <div style="display:flex; flex-direction:column; gap:10px">
+          <div class="form-group">
+            <label>تاريخ المعايرة الجديد</label>
+            <input type="date" id="new-cal-date">
+          </div>
+          <div class="form-group">
+            <label>تاريخ المعايرة القادمة</label>
+            <input type="date" id="new-next-date">
+          </div>
+          <div class="form-group">
+            <label>ملاحظات</label>
+            <textarea id="new-notes" style="height:60px" placeholder="ملاحظات اختيارية..."></textarea>
+          </div>
+          <button class="btn-primary" onclick="updateCalibration()">تحديث المعايرة ✓</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+const id = new URLSearchParams(location.search).get('id');
+let currentDevice = null;
+
+const statusMap = {
+  valid:         { label:'✅ ساري',           cls:'badge-valid',   bg:'#dcfce7', color:'#166534' },
+  expiring_soon: { label:'⚠️ ينتهي قريباً',  cls:'badge-soon',    bg:'#fef9c3', color:'#854d0e' },
+  expired:       { label:'❌ منتهي',          cls:'badge-expired', bg:'#fee2e2', color:'#991b1b' },
+};
+
+async function load() {
+  const { data: dev } = await db.from('devices').select('*').eq('id', id).single();
+  if (!dev) return;
+  currentDevice = dev;
+
+  document.title = dev.name;
+  document.getElementById('device-title').textContent = dev.name;
+
+  const s = statusMap[dev.calibration_status] || statusMap.valid;
+  const badge = document.getElementById('status-badge');
+  badge.textContent = s.label;
+  badge.className = `badge ${s.cls}`;
+
+  // القسم
+  let deptName = '—';
+  if (dev.department_id) {
+    const { data: dept } = await db.from('departments').select('name_ar').eq('id', dev.department_id).single();
+    if (dept) deptName = dept.name_ar;
+  }
+
+  // معلومات الجهاز
+  document.getElementById('device-info').innerHTML = [
+    ['اسم الجهاز',      dev.name],
+    ['الرقم التسلسلي',  dev.serial_number],
+    ['كود الجودة',       dev.quality_code],
+    ['القسم',            deptName],
+    ['النوع',            dev.device_type === 'primary' ? 'رئيسي' : 'مساند'],
+    ['تاريخ الإضافة',    new Date(dev.created_at).toLocaleDateString('ar-SA')],
+  ].map(([k,v]) => `
+    <div class="info-row">
+      <span class="info-label">${k}</span>
+      <span class="info-value">${v}</span>
+    </div>`).join('');
+
+  // تواريخ المعايرة
+  const calBg = dev.calibration_status === 'expired' ? '#fee2e2' : dev.calibration_status === 'expiring_soon' ? '#fef9c3' : '#f0fdf4';
+  document.getElementById('calib-dates').innerHTML = `
+    <div class="calib-box">
+      <p class="calib-label">آخر معايرة</p>
+      <p class="calib-value">${dev.calibration_date ? new Date(dev.calibration_date).toLocaleDateString('ar-SA') : '—'}</p>
+    </div>
+    <div class="calib-box" style="background:${calBg}">
+      <p class="calib-label">المعايرة القادمة</p>
+      <p class="calib-value" style="color:${s.color}">${dev.next_calibration_date ? new Date(dev.next_calibration_date).toLocaleDateString('ar-SA') : '—'}</p>
+    </div>`;
+
+  // الشهادة
+  if (dev.certificate_url) {
+    document.getElementById('cert-link').style.display = 'block';
+    document.getElementById('cert-url').href = dev.certificate_url;
+  }
+
+  // QR Code
+  const qrData = dev.qr_data || JSON.stringify({ name: dev.name, serial: dev.serial_number, code: dev.quality_code });
+  QRCode.toCanvas(document.getElementById('qr-canvas'), qrData, { width: 200, margin: 2 });
+
+  // السجل
+  const { data: logs } = await db.from('calibration_logs').select('*').eq('device_id', id).order('created_at', { ascending: false });
+  if (logs && logs.length > 0) {
+    document.getElementById('calib-logs').innerHTML = logs.map(l => `
+      <div style="background:#f8fafc; border-radius:8px; padding:12px; margin-bottom:8px; font-size:13px">
+        <div style="display:flex; justify-content:space-between; margin-bottom:4px">
+          <span style="font-weight:600">📅 ${new Date(l.calibration_date).toLocaleDateString('ar-SA')}</span>
+          <span style="color:#64748b">القادمة: ${new Date(l.next_calibration_date).toLocaleDateString('ar-SA')}</span>
+        </div>
+        ${l.notes ? `<p style="color:#64748b; margin-top:4px">${l.notes}</p>` : ''}
+      </div>`).join('');
+  }
+}
+
+async function uploadCertificate(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const path = `${id}/${Date.now()}.pdf`;
+  const { error } = await db.storage.from('certificates').upload(path, file);
+  if (error) { alert('خطأ في الرفع: ' + error.message); return; }
+  const { data: { publicUrl } } = db.storage.from('certificates').getPublicUrl(path);
+  await db.from('devices').update({ certificate_url: publicUrl }).eq('id', id);
+  document.getElementById('cert-link').style.display = 'block';
+  document.getElementById('cert-url').href = publicUrl;
+  alert('✅ تم رفع الشهادة بنجاح');
+}
+
+async function updateCalibration() {
+  const calDate  = document.getElementById('new-cal-date').value;
+  const nextDate = document.getElementById('new-next-date').value;
+  const notes    = document.getElementById('new-notes').value.trim();
+  if (!calDate || !nextDate) { alert('يرجى إدخال التاريخين'); return; }
+
+  await db.from('devices').update({ calibration_date: calDate, next_calibration_date: nextDate }).eq('id', id);
+  await db.from('calibration_logs').insert([{ device_id: id, calibration_date: calDate, next_calibration_date: nextDate, notes: notes || null }]);
+  alert('✅ تم تحديث المعايرة');
+  location.reload();
+}
+
+function downloadQR() {
+  const link = document.createElement('a');
+  link.download = `QR-${currentDevice?.serial_number || id}.png`;
+  link.href = document.getElementById('qr-canvas').toDataURL();
+  link.click();
+}
+
+load();
+</script>
+</body>
+</html>
