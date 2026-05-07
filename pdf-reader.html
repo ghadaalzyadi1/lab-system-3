@@ -220,18 +220,36 @@ function parseData(text) {
     if (m) { serial = m[1].trim(); break; }
   }
 
-  // كود الجودة / Asset ID
+ // ── كود الجودة ── يتعرف على النمط تلقائياً بغض النظر عن التسمية
   let qcode = null;
-  const qcPatterns = [
-    /Asset\s*ID[:\s]+([A-Z0-9\-\/]{3,25})/i,
-    /(?:Certificate\s*#|Cert\s*No|Certificate\s*Number)[:\s#]+([A-Z0-9\-\/]{3,25})/i,
-    /(?:Report\s*(?:No|Number)|Cal(?:ibration)?\s*(?:No|Number|#))[:\s#]+([A-Z0-9\-\/]{3,25})/i,
-  ];
-  for (const p of qcPatterns) {
-    const m = t.match(p);
-    if (m) { qcode = m[1].trim(); break; }
+
+  // أولاً: ابحث عن النمط المباشر XXX-XX-000 في كل النص
+  const qcPatternDirect = t.match(/\b([A-Z]{2,6}-[A-Z]{2}-\d{2,6})\b/g);
+  if (qcPatternDirect) {
+    // اختر الكود الذي يحتوي على أحد الرموز المعروفة
+    const known = qcPatternDirect.find(c =>
+      /-(HA|TO|PS|CC|FF)-/i.test(c)
+    );
+    qcode = known || qcPatternDirect[0];
   }
 
+  // ثانياً: إن لم يُوجد، ابحث بعد التسميات الشائعة
+  if (!qcode) {
+    const labelPatterns = [
+      /(?:Asset\s*ID|Asset\s*No|Asset\s*Number)[:\s]+([A-Z0-9\-]{4,20})/i,
+      /(?:Equipment\s*(?:ID|No|Code)|Equip\.\s*ID)[:\s]+([A-Z0-9\-]{4,20})/i,
+      /(?:Tag\s*(?:No|Number|ID)|Tag)[:\s#]+([A-Z0-9\-]{4,20})/i,
+      /(?:Item\s*(?:No|Code|ID))[:\s]+([A-Z0-9\-]{4,20})/i,
+      /(?:Identification|ID\s*No|ID\s*Number)[:\s]+([A-Z0-9\-]{4,20})/i,
+      /(?:Ref(?:erence)?\s*(?:No|Number|ID))[:\s]+([A-Z0-9\-]{4,20})/i,
+      /(?:Lab(?:oratory)?\s*(?:No|ID|Code))[:\s]+([A-Z0-9\-]{4,20})/i,
+      /(?:كود|رقم الجهاز|معرف|رقم المعايرة)[:\s]+([A-Z0-9\-]{4,20})/i,
+    ];
+    for (const p of labelPatterns) {
+      const m = t.match(p);
+      if (m) { qcode = m[1].trim(); break; }
+    }
+  }
   // التواريخ
   let allDates = [];
   const r1 = /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/g;
