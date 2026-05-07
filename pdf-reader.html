@@ -447,13 +447,26 @@ async function handleFile(file) {
 
   setProgress(10,'جاري قراءة الملف...');
   const lines = await extractText(file);
+  const fullText = lines.join(' ');
+
+  // تحقق إن كان النص فارغاً (PDF صورة)
+  const hasText = fullText.replace(/---PAGE---/g,'').trim().length > 50;
+
+  if (!hasText) {
+    // PDF صورة — اعرض نموذج إدخال يدوي
+    setProgress(100,'الملف يحتوي صور فقط');
+    setTimeout(()=>{
+      document.getElementById('progress-box').style.display='none';
+      showManualForm();
+    }, 400);
+    return;
+  }
 
   setProgress(40,'جاري تحليل البيانات...');
   parsedData = smartParse(lines);
 
   setProgress(65,'جاري البحث عن الجهاز...');
 
-  // مطابقة تلقائية
   const serial = (parsedData.serial_number||'').toLowerCase().trim();
   const qcode  = (parsedData.quality_code||'').toLowerCase().trim();
 
@@ -462,10 +475,8 @@ async function handleFile(file) {
   if (!matched && qcode) matched = allDevices.find(d=>d.quality_code?.toLowerCase()===qcode);
 
   if (matched) {
-    // وجد الجهاز → حفظ مباشرة
     await saveDirectly(matched.id, false);
   } else {
-    // لم يجد → اطلب من المستخدم
     setProgress(80,'لم يُعثر على جهاز مطابق...');
     setTimeout(()=>{
       document.getElementById('progress-box').style.display='none';
@@ -478,7 +489,95 @@ async function handleFile(file) {
     },400);
   }
 }
+  function showManualForm() {
+  document.getElementById('result-box').innerHTML = `
+    <div class="step-box">
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#92400e">
+        ⚠️ هذا الملف يحتوي على صور فقط ولا يمكن قراءة نصه تلقائياً.<br>
+        يرجى إدخال البيانات يدوياً ثم الحفظ.
+      </div>
+      <div class="fields-grid">
+        <div class="field-wrap" style="grid-column:1/-1">
+          <label>كود الجودة *</label>
+          <input id="m-qcode" type="text" placeholder="مثال: FCL-HA-634" oninput="detectDeptManual()">
+          <span id="m-dept" style="font-size:12px;color:#16a34a;margin-top:2px"></span>
+        </div>
+        <div class="field-wrap">
+          <label>الرقم التسلسلي</label>
+          <input id="m-serial" type="text" placeholder="—">
+        </div>
+        <div class="field-wrap">
+          <label>اسم الجهاز</label>
+          <input id="m-name" type="text" placeholder="—">
+        </div>
+        <div class="field-wrap">
+          <label>تاريخ المعايرة *</label>
+          <input id="m-caldate" type="date">
+        </div>
+        <div class="field-wrap">
+          <label>تاريخ المعايرة القادمة *</label>
+          <input id="m-nextdate" type="date">
+        </div>
+        <div class="field-wrap" style="grid-column:1/-1">
+          <label>اختر الجهاز</label>
+          <select id="m-device" style="padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;direction:rtl;font-family:inherit;width:100%;outline:none">
+            <option value="">— اختر جهاز موجود —</option>
+            <option value="NEW">➕ إنشاء جهاز جديد</option>
+            ${allDevices.map(d=>`<option value="${d.id}">${d.name} — ${d.serial_number}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+        <button class="btn-secondary" onclick="resetAll()">🔄 رفع ملف آخر</button>
+        <button class="btn-primary" onclick="saveManual()">💾 حفظ</button>
+      </div>
+    </div>`;
+  document.getElementById('result-box').style.display='block';
+}
 
+function detectDeptManual() {
+  const code = document.getElementById('m-qcode').value.toUpperCase();
+  const el   = document.getElementById('m-dept');
+  for (const [key,name] of Object.entries(CODE_NAME)) {
+    if (new RegExp('[-\\/\\s]'+key+'[-\\/\\s\\d]|[-\\/\\s]'+key+'$|^'+key+'[-\\/\\s]','i').test(code)) {
+      el.textContent = '✅ '+name; return;
+    }
+  }
+  el.textContent='';
+}
+
+async function saveManual() {
+  const cal  = document.getElementById('m-caldate').value;
+  const next = document.getElementById('m-nextdate').value;
+  const sel  = document.getElementById('m-device').value;
+  if (!cal||!next) { alert('يرجى إدخال تاريخَي المعايرة'); return; }
+
+  parsedData = {
+    device_name:           document.getElementById('m-name').value.trim()||null,
+    serial_number:         document.getElementById('m-serial').value.trim()||null,
+    quality_code:          document.getElementById('m-qcode').value.trim()||null,
+    calibration_date:      cal,
+    next_calibration_date: next,
+    lab_name: null,
+  };
+
+  // مطابقة تلقائية بالكود أو الرقم
+  let deviceId = sel;
+  let isNew    = sel==='NEW';
+
+  if (!sel) {
+    const serial = parsedData.serial_number?.toLowerCase();
+    const qcode  = parsedData.quality_code?.toLowerCase();
+    let matched  = null;
+    if (serial) matched = allDevices.find(d=>d.serial_number?.toLowerCase()===serial);
+    if (!matched&&qcode) matched = allDevices.find(d=>d.quality_code?.toLowerCase()===qcode);
+    if (matched) { deviceId=matched.id; isNew=false; }
+    else { deviceId='NEW'; isNew=true; }
+  }
+
+  document.getElementById('result-box').innerHTML='<div class="step-box"><p style="color:#64748b;font-size:14px">جاري الحفظ...</p></div>';
+  await saveDirectly(deviceId, isNew);
+}
 function showSuccess(deviceId, isNew) {
   document.getElementById('progress-box').style.display='none';
   document.getElementById('result-box').innerHTML=`
