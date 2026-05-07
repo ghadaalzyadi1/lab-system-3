@@ -239,21 +239,54 @@ function smartParse(text) {
   }
 
   // ── 2. الرقم التسلسلي ─────────────────────────────────────────
-  const serialPatterns = [
-    { re: /(?:Serial\s*Number|Serial\s*No\.?|S\/N|SN)[:\s]+([A-Z0-9\-]{3,25})/gi, conf: 100 },
-    { re: /(?:الرقم التسلسلي|رقم تسلسلي)[:\s]+([A-Z0-9\-]{3,25})/gi,             conf: 100 },
-    { re: /S\.N\.[:\s]+([A-Z0-9\-]{3,25})/gi,                                      conf: 90  },
-  ];
+  // البحث في السطور أولاً للحصول على القيمة الصحيحة
+  let serialFound = false;
 
-  for (const { re, conf } of serialPatterns) {
-    re.lastIndex = 0;
-    const m = re.exec(full);
-    if (m) {
-      const val = m[1].trim();
-      // تجاهل القيم التي تبدو وكأنها تواريخ أو أرقام فقط قصيرة
-      if (val.length >= 3 && !/^\d{1,2}$/.test(val)) {
-        result.serial_number = { value: val, confidence: conf, source: 'الرقم التسلسلي' };
-        break;
+  // ابحث في كل سطر عن "Serial Number" واستخرج الرقم الذي يليه مباشرة
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // نمط: Serial Number 258250846 (في نفس السطر)
+    const inLine = line.match(/(?:Serial\s*Number|Serial\s*No\.?|S\/N|SN)[:\s]+(\d{4,20})/i);
+    if (inLine) {
+      result.serial_number = { value: inLine[1].trim(), confidence: 100, source: 'الرقم التسلسلي' };
+      serialFound = true; break;
+    }
+
+    // نمط: السطر يحتوي "Serial Number" والسطر التالي هو الرقم
+    if (/^Serial\s*Number$/i.test(line) && lines[i+1]) {
+      const next = lines[i+1].trim();
+      if (/^\d{4,20}$/.test(next)) {
+        result.serial_number = { value: next, confidence: 100, source: 'الرقم التسلسلي' };
+        serialFound = true; break;
+      }
+    }
+
+    // نمط: S/N: XXXXX
+    const sn = line.match(/^S[\/\.]?N[:\s]+([A-Z0-9\-]{4,20})$/i);
+    if (sn) {
+      result.serial_number = { value: sn[1].trim(), confidence: 95, source: 'S/N' };
+      serialFound = true; break;
+    }
+  }
+
+  // إن لم نجد بعد، نبحث بنمط أوسع — أي رقم تسلسلي بعد كلمة Serial
+  if (!serialFound) {
+    // نبحث عن أول رقم طويل (6+ أرقام) بعد كلمة Serial في أي مكان
+    const broadSerial = full.match(/Serial\s*(?:Number|No)?[:\s#]+(\d{5,20})/i);
+    if (broadSerial) {
+      result.serial_number = { value: broadSerial[1].trim(), confidence: 85, source: 'الرقم التسلسلي' };
+      serialFound = true;
+    }
+  }
+
+  // إن لم نجد، ابحث عن أي رقم من 5-15 خانة بعد S/N
+  if (!serialFound) {
+    const snShort = full.match(/(?:S\/N|SN)[:\s#]+([A-Z0-9\-]{4,20})/i);
+    if (snShort) {
+      const val = snShort[1].trim();
+      if (!/^(CONDITIONS|BALANCE|PASSED|FAILED|N\/A)$/i.test(val)) {
+        result.serial_number = { value: val, confidence: 80, source: 'S/N' };
       }
     }
   }
