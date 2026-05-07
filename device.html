@@ -3,92 +3,97 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>إضافة جهاز</title>
+<title>تفاصيل الجهاز</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div class="page-header">
+<div class="page-header" id="page-header">
   <button class="back-btn" onclick="history.back()">← رجوع</button>
-  <h1>إضافة جهاز جديد</h1>
+  <h1 id="device-title">جاري التحميل...</h1>
+  <div style="margin-right:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span id="status-badge" class="badge"></span>
+    <a href="pdf-reader.html" class="btn-secondary" style="font-size:12px;padding:7px 12px">📄 تحديث بشهادة PDF</a>
+  </div>
 </div>
 
 <div class="container">
-  <div style="display:grid;grid-template-columns:1fr 320px;gap:24px">
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px">
 
+    <!-- يسار -->
     <div>
-      <div class="form-card">
-        <h2 class="section-title" style="margin-bottom:18px">بيانات الجهاز</h2>
+      <!-- معلومات الجهاز -->
+      <div class="info-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <h2 class="section-title" style="margin:0">معلومات الجهاز</h2>
+          <a id="edit-link" href="#" class="btn-secondary" style="font-size:12px;padding:6px 12px">✏️ تعديل</a>
+        </div>
+        <div id="device-info"></div>
+      </div>
+
+      <!-- المعايرة -->
+      <div class="info-card">
+        <h2 class="section-title" style="margin-bottom:14px">حالة المعايرة</h2>
+        <div class="calib-grid" id="calib-dates"></div>
+        <div id="days-remaining" style="margin-top:12px;text-align:center;font-size:13px;color:#64748b"></div>
+      </div>
+
+      <!-- تحديث المعايرة يدوياً -->
+      <div class="info-card">
+        <h2 class="section-title" style="margin-bottom:14px">تحديث المعايرة يدوياً</h2>
         <div class="form-grid">
-
-          <div class="form-group full">
-            <label>كود الجودة * <span id="dept-auto-label" style="color:#16a34a;font-size:12px;font-weight:normal"></span></label>
-            <input id="qcode" placeholder="مثال: FCL-HA-634" oninput="onQcodeInput()">
-          </div>
-
-          <div class="form-group full">
-            <label>اسم الجهاز *</label>
-            <input id="name" placeholder="مثال: ماصة LAMBDA PLUS 20-200">
-          </div>
-
           <div class="form-group">
-            <label>الرقم التسلسلي *</label>
-            <input id="serial" placeholder="مثال: 258250846">
+            <label>تاريخ المعايرة الجديد</label>
+            <input type="date" id="new-cal-date">
           </div>
-
-          <div class="form-group">
-            <label>نوع الجهاز</label>
-            <select id="dtype">
-              <option value="primary">جهاز رئيسي</option>
-              <option value="support">جهاز مساند</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label>القسم <span style="color:#94a3b8;font-size:11px">(يُحدَّد تلقائياً)</span></label>
-            <select id="dept"></select>
-          </div>
-
-          <div class="form-group">
-            <label>تاريخ المعايرة</label>
-            <input type="date" id="cal-date">
-          </div>
-
           <div class="form-group">
             <label>تاريخ المعايرة القادمة</label>
-            <input type="date" id="next-cal-date">
+            <input type="date" id="new-next-date">
           </div>
-
           <div class="form-group full">
             <label>ملاحظات</label>
-            <textarea id="notes" placeholder="أي ملاحظات..."></textarea>
+            <textarea id="new-notes" style="height:60px" placeholder="اختياري..."></textarea>
           </div>
-
+        </div>
+        <div class="form-actions" style="margin-top:12px">
+          <button class="btn-primary" onclick="updateCalibration()">تحديث المعايرة ✓</button>
         </div>
       </div>
-      <div class="form-actions">
-        <button class="btn-secondary" onclick="history.back()">إلغاء</button>
-        <button class="btn-primary" onclick="saveDevice()">حفظ الجهاز ✓</button>
+
+      <!-- رفع شهادة -->
+      <div class="info-card">
+        <h2 class="section-title" style="margin-bottom:14px">شهادة المعايرة</h2>
+        <div class="upload-area" onclick="document.getElementById('cert-input').click()">
+          <div style="font-size:32px">📄</div>
+          <p style="color:#64748b;font-size:13px;margin-top:8px">اضغط لرفع شهادة PDF</p>
+          <input type="file" id="cert-input" accept=".pdf" style="display:none" onchange="uploadCert(this)">
+        </div>
+        <div id="cert-link" style="margin-top:12px;display:none">
+          <a id="cert-url" target="_blank" class="btn-secondary">📄 عرض الشهادة الحالية</a>
+        </div>
+      </div>
+
+      <!-- سجل المعايرة -->
+      <div class="info-card">
+        <h2 class="section-title" style="margin-bottom:14px">📋 سجل المعايرات السابقة</h2>
+        <div id="calib-logs"><p style="color:#94a3b8;font-size:13px">لا يوجد سجل</p></div>
       </div>
     </div>
 
-    <!-- QR -->
+    <!-- يمين -->
     <div>
-      <div class="form-card">
+      <div class="info-card" style="text-align:center">
         <h2 class="section-title" style="margin-bottom:14px">QR Code</h2>
-        <div class="qr-box">
-          <canvas id="qr-canvas" style="display:none;margin:0 auto;border-radius:8px;display:block"></canvas>
-          <div id="qr-placeholder" style="color:#94a3b8;padding:30px 0">
-            <div style="font-size:40px">📱</div>
-            <p style="margin-top:8px;font-size:13px">يظهر تلقائياً عند الكتابة</p>
-          </div>
-        </div>
-        <button id="dl-btn" onclick="downloadQR()" style="display:none;margin-top:10px;width:100%" class="btn-secondary">⬇️ تحميل QR</button>
-        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px;margin-top:10px;font-size:12px;color:#92400e">
-          💡 عند مسح الـ QR يفتح ملف الجهاز مباشرة
-        </div>
+        <canvas id="qr-canvas" style="border-radius:8px;margin:0 auto;display:block"></canvas>
+        <button onclick="downloadQR()" class="btn-secondary" style="width:100%;margin-top:10px">⬇️ تحميل QR</button>
+        <p style="font-size:11px;color:#94a3b8;margin-top:8px">امسح الـ QR لفتح ملف الجهاز</p>
+      </div>
+
+      <div id="notes-card" class="info-card" style="margin-top:16px;display:none">
+        <h2 class="section-title" style="margin-bottom:10px">ملاحظات</h2>
+        <p id="notes-text" style="font-size:13px;color:#374151;line-height:1.7"></p>
       </div>
     </div>
   </div>
@@ -99,90 +104,146 @@
 const { createClient } = supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// خريطة الأكواد → الأقسام
-const CODE_DEPT = { 'HA':'antibiotics','TO':'toxicology','PS':'pesticides','CC':'contaminants','FF':'food-fraud' };
-const CODE_NAME = { 'HA':'قسم المضادات الحيوية والهرمونات','TO':'قسم السموم','PS':'قسم المبيدات','CC':'قسم الملوثات الكيميائية','FF':'قسم الغش الغذائي' };
+// دعم فتح الجهاز بالـ ID أو كود الجودة (من QR)
+const params = new URLSearchParams(location.search);
+const deviceId = params.get('id');
+const qcParam  = params.get('qc');
 
-let depts = [];
-const canvas = document.getElementById('qr-canvas');
+const statusMap = {
+  valid:         { label:'✅ ساري',           cls:'badge-valid',   color:'#166534', bg:'#dcfce7' },
+  expiring_soon: { label:'⚠️ ينتهي قريباً',  cls:'badge-soon',    color:'#854d0e', bg:'#fef9c3' },
+  expired:       { label:'❌ منتهي',          cls:'badge-expired', color:'#991b1b', bg:'#fee2e2' },
+};
 
-async function init() {
-  const { data } = await db.from('departments').select('*');
-  depts = data || [];
-  const sel = document.getElementById('dept');
-  sel.innerHTML = '<option value="">اختر القسم</option>';
-  depts.forEach(d => {
-    const o = document.createElement('option');
-    o.value = d.id; o.textContent = d.name_ar; o.dataset.slug = d.slug;
-    sel.appendChild(o);
-  });
-}
-init();
+let currentDevice = null;
 
-function onQcodeInput() {
-  const code = document.getElementById('qcode').value.toUpperCase();
-  // استخراج الكود من النمط مثل FCL-HA-634
-  for (const [key, slug] of Object.entries(CODE_DEPT)) {
-    if (code.includes('-' + key + '-') || code.includes(key + '-') || code.endsWith(key) || code.startsWith(key)) {
-      const dept = depts.find(d => d.slug === slug);
-      if (dept) {
-        document.getElementById('dept').value = dept.id;
-        document.getElementById('dept-auto-label').textContent = '✅ تم تحديد ' + CODE_NAME[key] + ' تلقائياً';
-      }
-      break;
-    }
+async function load() {
+  let dev = null;
+
+  if (deviceId) {
+    const { data } = await db.from('devices').select('*').eq('id', deviceId).single();
+    dev = data;
+  } else if (qcParam) {
+    const { data } = await db.from('devices').select('*')
+      .or(`quality_code.ilike.%${qcParam}%,serial_number.ilike.%${qcParam}%`)
+      .limit(1).single();
+    dev = data;
   }
-  updateQR();
+
+  if (!dev) { document.getElementById('device-title').textContent='الجهاز غير موجود'; return; }
+  currentDevice = dev;
+
+  document.title = dev.name;
+  document.getElementById('device-title').textContent = dev.name;
+  document.getElementById('edit-link').href = `add-device.html?id=${dev.id}`;
+
+  const s = statusMap[dev.calibration_status] || statusMap.valid;
+  const badge = document.getElementById('status-badge');
+  badge.textContent = s.label; badge.className = `badge ${s.cls}`;
+
+  // القسم
+  let deptName = '—';
+  if (dev.department_id) {
+    const { data: dept } = await db.from('departments').select('name_ar').eq('id', dev.department_id).single();
+    if (dept) deptName = dept.name_ar;
+  }
+
+  document.getElementById('device-info').innerHTML = [
+    ['اسم الجهاز',     dev.name],
+    ['الرقم التسلسلي', dev.serial_number],
+    ['كود الجودة',     dev.quality_code],
+    ['القسم',          deptName],
+    ['النوع',          dev.device_type==='primary'?'رئيسي':'مساند'],
+    ['تاريخ الإضافة',  new Date(dev.created_at).toLocaleDateString('ar-SA')],
+  ].map(([k,v])=>`
+    <div class="info-row">
+      <span class="info-label">${k}</span>
+      <span class="info-value">${v||'—'}</span>
+    </div>`).join('');
+
+  // المعايرة
+  const s2 = statusMap[dev.calibration_status] || statusMap.valid;
+  document.getElementById('calib-dates').innerHTML = `
+    <div class="calib-box">
+      <p class="calib-label">آخر معايرة</p>
+      <p class="calib-value">${dev.calibration_date ? new Date(dev.calibration_date).toLocaleDateString('ar-SA') : '—'}</p>
+    </div>
+    <div class="calib-box" style="background:${s2.bg}">
+      <p class="calib-label">المعايرة القادمة</p>
+      <p class="calib-value" style="color:${s2.color}">${dev.next_calibration_date ? new Date(dev.next_calibration_date).toLocaleDateString('ar-SA') : '—'}</p>
+    </div>`;
+
+  // الأيام المتبقية
+  if (dev.next_calibration_date) {
+    const diff = Math.ceil((new Date(dev.next_calibration_date) - new Date()) / 86400000);
+    const msg = diff < 0
+      ? `<span style="color:#991b1b;font-weight:700">انتهت الصلاحية منذ ${Math.abs(diff)} يوم</span>`
+      : diff <= 30
+      ? `<span style="color:#854d0e;font-weight:700">تبقى ${diff} يوم فقط</span>`
+      : `<span style="color:#166534">تبقى ${diff} يوم</span>`;
+    document.getElementById('days-remaining').innerHTML = msg;
+  }
+
+  // الشهادة
+  if (dev.certificate_url) {
+    document.getElementById('cert-link').style.display='block';
+    document.getElementById('cert-url').href = dev.certificate_url;
+  }
+
+  // الملاحظات
+  if (dev.notes) {
+    document.getElementById('notes-card').style.display='block';
+    document.getElementById('notes-text').textContent = dev.notes;
+  }
+
+  // QR
+  const qrData = dev.qr_data || JSON.stringify({ name:dev.name, serial:dev.serial_number, code:dev.quality_code });
+  QRCode.toCanvas(document.getElementById('qr-canvas'), qrData, { width:190, margin:2 });
+
+  // السجل
+  const { data: logs } = await db.from('calibration_logs').select('*').eq('device_id', dev.id).order('created_at',{ascending:false});
+  if (logs?.length) {
+    document.getElementById('calib-logs').innerHTML = logs.map(l=>`
+      <div style="background:#f8fafc;border-radius:8px;padding:12px;margin-bottom:8px;font-size:13px;border-right:3px solid #3b82f6">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="font-weight:700">📅 ${new Date(l.calibration_date).toLocaleDateString('ar-SA')}</span>
+          <span style="color:#64748b">القادمة: ${new Date(l.next_calibration_date).toLocaleDateString('ar-SA')}</span>
+        </div>
+        ${l.notes?`<p style="color:#64748b;margin-top:4px">${l.notes}</p>`:''}
+        ${l.certificate_url?`<a href="${l.certificate_url}" target="_blank" style="color:#3b82f6;font-size:12px">📄 الشهادة</a>`:''}
+      </div>`).join('');
+  }
 }
 
-async function updateQR() {
-  const name   = document.getElementById('name').value.trim();
-  const serial = document.getElementById('serial').value.trim();
-  const qcode  = document.getElementById('qcode').value.trim();
-  const placeholder = document.getElementById('qr-placeholder');
-
-  if (!name && !serial && !qcode) { placeholder.style.display='block'; canvas.style.display='none'; return; }
-
-  const url = `${location.origin.replace('github.io','github.io')}/${location.pathname.split('/')[1]}/device.html?qc=${encodeURIComponent(qcode||serial)}`;
-  const data = JSON.stringify({ name, serial, code: qcode, url });
-  await QRCode.toCanvas(canvas, data, { width:190, margin:2 });
-  canvas.style.display = 'block';
-  placeholder.style.display = 'none';
-  document.getElementById('dl-btn').style.display = 'block';
+async function uploadCert(input) {
+  const file = input.files[0]; if (!file) return;
+  const path = `${currentDevice.id}/${Date.now()}.pdf`;
+  const { error } = await db.storage.from('certificates').upload(path, file);
+  if (error) { alert('خطأ: '+error.message); return; }
+  const { data: { publicUrl } } = db.storage.from('certificates').getPublicUrl(path);
+  await db.from('devices').update({ certificate_url: publicUrl }).eq('id', currentDevice.id);
+  document.getElementById('cert-link').style.display='block';
+  document.getElementById('cert-url').href = publicUrl;
+  alert('✅ تم رفع الشهادة');
 }
 
-document.getElementById('name').addEventListener('input', updateQR);
-document.getElementById('serial').addEventListener('input', updateQR);
+async function updateCalibration() {
+  const cal  = document.getElementById('new-cal-date').value;
+  const next = document.getElementById('new-next-date').value;
+  if (!cal||!next) { alert('يرجى إدخال التاريخين'); return; }
+  await db.from('devices').update({ calibration_date:cal, next_calibration_date:next }).eq('id', currentDevice.id);
+  await db.from('calibration_logs').insert([{ device_id:currentDevice.id, calibration_date:cal, next_calibration_date:next, notes:document.getElementById('new-notes').value||null }]);
+  alert('✅ تم التحديث'); location.reload();
+}
 
 function downloadQR() {
   const link = document.createElement('a');
-  link.download = `QR-${document.getElementById('qcode').value||'device'}.png`;
-  link.href = canvas.toDataURL();
+  link.download = `QR-${currentDevice?.serial_number||'device'}.png`;
+  link.href = document.getElementById('qr-canvas').toDataURL();
   link.click();
 }
 
-async function saveDevice() {
-  const name   = document.getElementById('name').value.trim();
-  const serial = document.getElementById('serial').value.trim();
-  const qcode  = document.getElementById('qcode').value.trim();
-  if (!name||!serial||!qcode) { alert('يرجى ملء الحقول الإلزامية: كود الجودة، الاسم، الرقم التسلسلي'); return; }
-
-  const btn = event.target; btn.disabled=true; btn.textContent='جاري الحفظ...';
-
-  const qrData = JSON.stringify({ name, serial, code: qcode });
-  const { data, error } = await db.from('devices').insert([{
-    name, serial_number: serial, quality_code: qcode,
-    department_id:         document.getElementById('dept').value || null,
-    device_type:           document.getElementById('dtype').value,
-    calibration_date:      document.getElementById('cal-date').value      || null,
-    next_calibration_date: document.getElementById('next-cal-date').value || null,
-    notes:                 document.getElementById('notes').value.trim()   || null,
-    qr_data: qrData,
-  }]).select();
-
-  if (error) { alert('خطأ: '+error.message); btn.disabled=false; btn.textContent='حفظ الجهاز ✓'; return; }
-  location.href = data?.[0]?.id ? `device.html?id=${data[0].id}` : 'index.html';
-}
+load();
 </script>
 </body>
 </html>
