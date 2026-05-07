@@ -239,95 +239,46 @@ function smartParse(lines) {
 
 // ── التواريخ ─────────────────────────────────
   const calKeywords  = /(?:Calibration\s*Date|Date\s*(?:of\s*)?Calibrat|Calibrat(?:ed|ion)\s*(?:Date|On|Performed)|Issue\s*Date|Date\s*Calibrated|تاريخ\s*المعايرة)/i;
-  const nextKeywords = /(?:Next\s*(?:Calibration\s*)?(?:Date|Due)|(?:Calibration\s*)?Due\s*Date|Recommended\s*(?:Due|Calibration)\s*Date|Valid\s*Until|Expiry\s*Date|تاريخ\s*المعايرة\s*القادمة)/i;
+  const nextKeywords = /(?:Next\s*(?:Calibration\s*)?(?:Date|Due)|(?:Calibration\s*)?Due\s*Date|Recommended\s*(?:Due|Calibration)\s*Date|Valid\s*Until|Expiry\s*Date|تاريخ\s*المعايرة\s*القادمة|Next\s*Due)/i;
 
   const dateEntries = [];
 
-// ── نمط شهادة Calibry الخاص ──────────────────
-  // الترتيب: "Next due" → "Date" → "Performed by" → 8/8/2026 → 09.02.2026
+  // بحث خاص في سطور متجاورة (شهادة Calibry: "Next due Date Performed by" ثم التواريخ)
   for (let i=0; i<lines.length; i++) {
-    if (/^Next\s*due$/i.test(lines[i].trim())) {
-      // ابحث عن التواريخ في السطور التالية (تجاهل التسميات)
-      const foundDates = [];
-      for (let j=i+1; j<=Math.min(i+8, lines.length-1); j++) {
-        const ln = lines[j].trim();
-        if (/^(Date|Performed\s*by|Repeated|Printed|Certificate|Page|Data|Template)$/i.test(ln)) continue;
-        // نمط M/D/YYYY (أمريكي - للـ Next due)
-        const usDate = ln.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-        // نمط DD.MM.YYYY (أوروبي - للـ Date المعايرة)
-        const euDate = ln.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-
-        if (usDate) {
-          const mo=+usDate[1], d=+usDate[2], y=+usDate[3];
-          if (y>=2020&&y<=2035&&mo>=1&&mo<=12&&d>=1&&d<=31)
-            foundDates.push({d, mo, y, format:'US'});
-        } else if (euDate) {
-          const d=+euDate[1], mo=+euDate[2], y=+euDate[3];
-          if (y>=2020&&y<=2035&&mo>=1&&mo<=12&&d>=1&&d<=31)
-            foundDates.push({d, mo, y, format:'EU'});
-        }
-        if (foundDates.length >= 2) break;
-      }
-      // أول تاريخ = Next due، ثاني تاريخ = تاريخ المعايرة
-      if (foundDates.length >= 1) dateEntries.push({...foundDates[0], type:'next', conf:99});
-      if (foundDates.length >= 2) dateEntries.push({...foundDates[1], type:'cal',  conf:99});
-      break;
-    }
-  }
-  // ── نمط "Calibration Date: DD/MM/YYYY" أو "Date Calibrated: ..."
-  for (let i=0; i<lines.length; i++) {
-    const ln = lines[i].trim();
-
-    // تاريخ المعايرة في نفس السطر
-    const calInLine = ln.match(/(?:Calibration\s*Date|Date\s*Calibrated|Calibrated\s*Date|Date\s*of\s*Calibration|Calibration\s*Performed\s*On)[:\s]+(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{4})/i);
-    if (calInLine) {
-      const p = calInLine[1].split(/[\/\.\-]/);
-      if (+p[2]>2000) dateEntries.push({d:+p[0],mo:+p[1],y:+p[2],type:'cal',conf:98});
-    }
-
-    // تاريخ القادمة في نفس السطر
-    const nextInLine = ln.match(/(?:Next\s*(?:Calibration\s*)?(?:Date|Due)|(?:Calibration\s*)?Due\s*Date|Recommended\s*Due\s*Date)[:\s]+(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{4})/i);
-    if (nextInLine) {
-      const p = nextInLine[1].split(/[\/\.\-]/);
-      if (+p[2]>2000) dateEntries.push({d:+p[0],mo:+p[1],y:+p[2],type:'next',conf:98});
-    }
-
-    // التسمية في سطر والتاريخ في السطر التالي
-    if (calKeywords.test(ln) && !calInLine) {
-      for (let k=1; k<=2; k++) {
-        const nxt = lines[i+k]?.trim();
-        if (!nxt) continue;
-        const dm = nxt.match(/^(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})$/);
-        if (dm && +dm[3]>=2020 && +dm[3]<=2035) {
-          dateEntries.push({d:+dm[1],mo:+dm[2],y:+dm[3],type:'cal',conf:95});
+    if (/Next\s*due/i.test(lines[i]) && /Date/i.test(lines[i])) {
+      // التواريخ في السطر التالي
+      for (let j=i+1; j<=Math.min(i+3, lines.length-1); j++) {
+        const dateMatches = [...lines[j].matchAll(/(\d{1,2})[\/\.](\d{1,2})[\/\.](\d{4})/g)];
+        if (dateMatches.length >= 2) {
+          // أول تاريخ = Next due، ثاني = Date المعايرة
+          const [nd, cd] = [dateMatches[0], dateMatches[1]];
+          dateEntries.push({ d:+nd[1][1],mo:+nd[1][2],y:+nd[1][3], type:'next', conf:99 });
+          dateEntries.push({ d:+cd[1][1],mo:+cd[1][2],y:+cd[1][3], type:'cal',  conf:99 });
           break;
         }
-      }
-    }
-    if (nextKeywords.test(ln) && !nextInLine) {
-      for (let k=1; k<=2; k++) {
-        const nxt = lines[i+k]?.trim();
-        if (!nxt) continue;
-        const dm = nxt.match(/^(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})$/);
-        if (dm && +dm[3]>=2020 && +dm[3]<=2035) {
-          dateEntries.push({d:+dm[1],mo:+dm[2],y:+dm[3],type:'next',conf:95});
-          break;
+        // تاريخ واحد في السطر = Next due
+        const single = lines[j].match(/^(\d{1,2})[\/\.](\d{1,2})[\/\.](\d{4})$/);
+        if (single) {
+          dateEntries.push({ d:+single[1],mo:+single[2],y:+single[3], type:'next', conf:95 });
         }
       }
     }
   }
 
-  // ── بحث عام كـ fallback
+  // بحث عام في كل النص
   const dateRe = /(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})/g;
   let m;
   while ((m=dateRe.exec(full))!==null) {
     const d=+m[1],mo=+m[2],y=+m[3];
     if (y<2020||y>2035||mo<1||mo>12||d<1||d>31) continue;
-    const before=full.substring(Math.max(0,m.index-150),m.index);
-    const after=full.substring(m.index,Math.min(full.length,m.index+150));
+    const before = full.substring(Math.max(0,m.index-120), m.index);
+    const after  = full.substring(m.index, Math.min(full.length, m.index+120));
     let type='unknown', conf=50;
-    if (calKeywords.test(before+after))  {type='cal'; conf=90;}
-    if (nextKeywords.test(before+after)) {type='next';conf=90;}
+    if (calKeywords.test(before+after))  { type='cal';  conf=95; }
+    if (nextKeywords.test(before+after)) { type='next'; conf=95; }
+    // "Next due" قريب جداً
+    if (/Next\s*[Dd]ue/i.test(after.substring(0,50)))  { type='next'; conf=99; }
+    if (/\bDate\b/i.test(before.substring(before.length-40)) && type==='unknown') { type='cal'; conf=88; }
     dateEntries.push({d,mo,y,type,conf});
   }
 
@@ -336,27 +287,21 @@ function smartParse(lines) {
   while ((m=dateRe2.exec(full))!==null) {
     const y=+m[1],mo=+m[2],d=+m[3];
     if (y<2020||y>2035||mo<1||mo>12||d<1||d>31) continue;
-    const before=full.substring(Math.max(0,m.index-150),m.index);
-    const after=full.substring(m.index,Math.min(full.length,m.index+150));
+    const before=full.substring(Math.max(0,m.index-120),m.index);
+    const after=full.substring(m.index,Math.min(full.length,m.index+120));
     let type='unknown',conf=50;
-    if (calKeywords.test(before+after))  {type='cal'; conf=90;}
-    if (nextKeywords.test(before+after)) {type='next';conf=90;}
+    if (calKeywords.test(before+after))  {type='cal'; conf=95;}
+    if (nextKeywords.test(before+after)) {type='next';conf=95;}
     dateEntries.push({d,mo,y,type,conf});
   }
 
-  // اختيار أفضل تاريخ (الأعلى ثقة)
+  // اختيار أفضل تاريخ
   const calDates  = dateEntries.filter(e=>e.type==='cal').sort((a,b)=>b.conf-a.conf);
   const nextDates = dateEntries.filter(e=>e.type==='next').sort((a,b)=>b.conf-a.conf);
-  const unknown2  = dateEntries.filter(e=>e.type==='unknown')
-    .sort((a,b)=>a.y*10000+a.mo*100+a.d-(b.y*10000+b.mo*100+b.d));
+  const unknown2  = dateEntries.filter(e=>e.type==='unknown').sort((a,b)=>a.y*10000+a.mo*100+a.d-(b.y*10000+b.mo*100+b.d));
 
-  data.calibration_date      = calDates[0]
-    ? toISO(calDates[0].d, calDates[0].mo, calDates[0].y)
-    : (unknown2[0] ? toISO(unknown2[0].d, unknown2[0].mo, unknown2[0].y) : null);
-
-  data.next_calibration_date = nextDates[0]
-    ? toISO(nextDates[0].d, nextDates[0].mo, nextDates[0].y)
-    : (unknown2.length>1 ? toISO(unknown2[unknown2.length-1].d, unknown2[unknown2.length-1].mo, unknown2[unknown2.length-1].y) : null);
+  data.calibration_date      = calDates[0]  ? toISO(calDates[0].d, calDates[0].mo, calDates[0].y)   : (unknown2[0]  ? toISO(unknown2[0].d, unknown2[0].mo, unknown2[0].y)                    : null);
+  data.next_calibration_date = nextDates[0] ? toISO(nextDates[0].d,nextDates[0].mo,nextDates[0].y)  : (unknown2.length>1 ? toISO(unknown2[unknown2.length-1].d,unknown2[unknown2.length-1].mo,unknown2[unknown2.length-1].y) : null);
 
   // ── جهة الاعتماد ─────────────────────────────
   for (let i=0; i<lines.length; i++) {
