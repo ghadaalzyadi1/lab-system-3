@@ -243,37 +243,37 @@ function smartParse(lines) {
 
   const dateEntries = [];
 
-  // ── نمط شهادة Calibry: "Next due" ثم "Date" ثم "Performed by" ثم كل تاريخ في سطر منفصل
+// ── نمط شهادة Calibry الخاص ──────────────────
+  // الترتيب: "Next due" → "Date" → "Performed by" → 8/8/2026 → 09.02.2026
   for (let i=0; i<lines.length; i++) {
     if (/^Next\s*due$/i.test(lines[i].trim())) {
-      // ابحث عن السطور التالية التي تحتوي تواريخ
-      let nextFound = false, calFound = false;
-      for (let j=i+1; j<=Math.min(i+6, lines.length-1); j++) {
+      // ابحث عن التواريخ في السطور التالية (تجاهل التسميات)
+      const foundDates = [];
+      for (let j=i+1; j<=Math.min(i+8, lines.length-1); j++) {
         const ln = lines[j].trim();
-        // تجاهل التسميات
-        if (/^(Date|Performed\s*by|Repeated|Printed|Data\s*from|Template|Certificate)$/i.test(ln)) continue;
-        // هل هذا تاريخ؟
-        const dm = ln.match(/^(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})$/);
-        if (dm) {
-          const d=+dm[1], mo=+dm[2], y=+dm[3];
-          if (y>=2020 && y<=2035 && mo>=1 && mo<=12 && d>=1 && d<=31) {
-            if (!nextFound) {
-              // أول تاريخ = Next due
-              dateEntries.push({d, mo, y, type:'next', conf:99});
-              nextFound = true;
-            } else if (!calFound) {
-              // ثاني تاريخ = Date المعايرة
-              dateEntries.push({d, mo, y, type:'cal', conf:99});
-              calFound = true;
-              break;
-            }
-          }
+        if (/^(Date|Performed\s*by|Repeated|Printed|Certificate|Page|Data|Template)$/i.test(ln)) continue;
+        // نمط M/D/YYYY (أمريكي - للـ Next due)
+        const usDate = ln.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        // نمط DD.MM.YYYY (أوروبي - للـ Date المعايرة)
+        const euDate = ln.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+
+        if (usDate) {
+          const mo=+usDate[1], d=+usDate[2], y=+usDate[3];
+          if (y>=2020&&y<=2035&&mo>=1&&mo<=12&&d>=1&&d<=31)
+            foundDates.push({d, mo, y, format:'US'});
+        } else if (euDate) {
+          const d=+euDate[1], mo=+euDate[2], y=+euDate[3];
+          if (y>=2020&&y<=2035&&mo>=1&&mo<=12&&d>=1&&d<=31)
+            foundDates.push({d, mo, y, format:'EU'});
         }
+        if (foundDates.length >= 2) break;
       }
+      // أول تاريخ = Next due، ثاني تاريخ = تاريخ المعايرة
+      if (foundDates.length >= 1) dateEntries.push({...foundDates[0], type:'next', conf:99});
+      if (foundDates.length >= 2) dateEntries.push({...foundDates[1], type:'cal',  conf:99});
       break;
     }
   }
-
   // ── نمط "Calibration Date: DD/MM/YYYY" أو "Date Calibrated: ..."
   for (let i=0; i<lines.length; i++) {
     const ln = lines[i].trim();
