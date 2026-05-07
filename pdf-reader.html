@@ -7,82 +7,57 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <link rel="stylesheet" href="style.css">
-<style>
-  .step-box { background: white; border-radius: 12px; border: 1px solid #e2e8f0; padding: 24px; margin-bottom: 16px; }
-  .step-num { background: #1e3a5f; color: white; width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; margin-left: 10px; }
-  .step-title { font-size: 15px; font-weight: 700; color: #1e293b; }
-  .upload-area { border: 2px dashed #cbd5e1; border-radius: 12px; padding: 40px; text-align: center; cursor: pointer; transition: all .2s; background: #f8fafc; }
-  .upload-area:hover { border-color: #3b82f6; background: #eff6ff; }
-  .upload-area.has-file { border-color: #22c55e; background: #f0fdf4; }
-  .field-group { display: flex; flex-direction: column; gap: 4px; }
-  .field-group label { font-size: 12px; font-weight: 600; color: #64748b; }
-  .field-group input { padding: 10px 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 14px; direction: rtl; font-family: inherit; outline: none; width: 100%; }
-  .field-group input:focus { border-color: #3b82f6; }
-  .field-group input.found { border-color: #22c55e; background: #f0fdf4; }
-  .fields-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .progress-bar { height: 6px; background: #e2e8f0; border-radius: 99px; overflow: hidden; margin-top: 12px; }
-  .progress-fill { height: 100%; background: #3b82f6; border-radius: 99px; transition: width .4s; }
-  .status-msg { font-size: 13px; color: #64748b; margin-top: 8px; text-align: center; }
-  .result-section { display: none; }
-  .match-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
-  .match-found { background: #dcfce7; color: #166534; }
-  .match-none  { background: #fff3cd; color: #854d0e; }
-  .success-banner { background: #dcfce7; border: 1px solid #86efac; border-radius: 10px; padding: 14px 18px; display: flex; align-items: center; gap: 10px; font-size: 14px; color: #166534; font-weight: 600; }
-  .raw-text { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; font-size: 11px; color: #64748b; max-height: 120px; overflow-y: auto; direction: ltr; text-align: left; margin-top: 10px; line-height: 1.6; }
-  .device-select { padding: 10px 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 14px; direction: rtl; font-family: inherit; width: 100%; outline: none; }
-</style>
 </head>
 <body>
 
 <div class="page-header">
   <button class="back-btn" onclick="history.back()">← رجوع</button>
   <h1>📄 قارئ شهادات المعايرة</h1>
+  <span style="background:#dcfce7;color:#166534;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;margin-right:auto">مجاني 100%</span>
 </div>
 
-<div class="container" style="max-width:800px">
+<div class="container" style="max-width:820px">
 
-  <!-- الخطوة 1: رفع PDF -->
+  <!-- الخطوة 1 -->
   <div class="step-box">
-    <div style="display:flex;align-items:center;margin-bottom:16px">
+    <div style="display:flex;align-items:center;margin-bottom:14px">
       <span class="step-num">1</span>
-      <span class="step-title">ارفع شهادة المعايرة (PDF)</span>
+      <span class="step-title">ارفع شهادة المعايرة PDF</span>
     </div>
-
     <div class="upload-area" id="upload-area"
-         onclick="document.getElementById('pdf-file').click()"
-         ondragover="event.preventDefault()"
-         ondrop="handleDrop(event)">
-      <div id="upload-icon" style="font-size:48px">📄</div>
-      <p id="upload-text" style="color:#64748b;margin-top:8px;font-size:14px">اضغط لاختيار ملف PDF أو اسحبه هنا</p>
-      <p id="upload-sub" style="color:#94a3b8;font-size:12px;margin-top:4px">يدعم: PDF فقط • مجاني 100%</p>
+      onclick="document.getElementById('pdf-file').click()"
+      ondragover="event.preventDefault();this.classList.add('drag')"
+      ondragleave="this.classList.remove('drag')"
+      ondrop="handleDrop(event)">
+      <div id="up-icon" style="font-size:48px">📄</div>
+      <p id="up-text" style="color:#64748b;margin-top:8px;font-size:14px">اضغط أو اسحب ملف PDF هنا</p>
+      <p id="up-sub" style="color:#94a3b8;font-size:12px;margin-top:4px">يقرأ شهادات المعايرة تلقائياً</p>
       <input type="file" id="pdf-file" accept=".pdf" style="display:none" onchange="handleFile(this.files[0])">
     </div>
-
     <div id="progress-box" style="display:none;margin-top:12px">
-      <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
-      <p class="status-msg" id="status-msg">جاري القراءة...</p>
+      <div class="progress-bar"><div class="progress-fill" id="prog" style="width:0%"></div></div>
+      <p class="status-msg" id="prog-msg">جاري القراءة...</p>
     </div>
   </div>
 
-  <!-- الخطوة 2: البيانات المستخرجة -->
-  <div class="step-box result-section" id="result-section">
-    <div style="display:flex;align-items:center;margin-bottom:16px">
+  <!-- الخطوة 2: البيانات -->
+  <div class="step-box" id="step2" style="display:none">
+    <div style="display:flex;align-items:center;margin-bottom:14px">
       <span class="step-num">2</span>
       <span class="step-title">البيانات المستخرجة — راجع وعدّل إن احتجت</span>
     </div>
-
     <div class="fields-grid">
       <div class="field-group" style="grid-column:1/-1">
         <label>اسم الجهاز</label>
-        <input id="ex-name" type="text" placeholder="أدخل يدوياً إن لم يُستخرج">
+        <input id="ex-name" type="text" placeholder="أدخل يدوياً إن لزم">
       </div>
       <div class="field-group">
         <label>الرقم التسلسلي</label>
         <input id="ex-serial" type="text" placeholder="—">
       </div>
       <div class="field-group">
-        <label>كود الجودة / رقم الشهادة</label>
-        <input id="ex-qcode" type="text" placeholder="—">
+        <label>كود الجودة / Asset ID <span id="dept-detected" style="color:#16a34a;font-size:11px"></span></label>
+        <input id="ex-qcode" type="text" placeholder="—" oninput="detectDeptFromCode()">
       </div>
       <div class="field-group">
         <label>تاريخ المعايرة</label>
@@ -93,52 +68,48 @@
         <input id="ex-nextdate" type="date">
       </div>
       <div class="field-group" style="grid-column:1/-1">
-        <label>جهة الاعتماد / المختبر</label>
+        <label>جهة الاعتماد</label>
         <input id="ex-lab" type="text" placeholder="—">
       </div>
     </div>
-
-    <!-- النص الخام -->
-    <details style="margin-top:14px">
-      <summary style="font-size:12px;color:#94a3b8;cursor:pointer">عرض النص المستخرج من الملف</summary>
+    <details style="margin-top:12px">
+      <summary style="font-size:12px;color:#94a3b8;cursor:pointer">عرض النص الكامل المستخرج من الملف</summary>
       <div class="raw-text" id="raw-text"></div>
     </details>
   </div>
 
-  <!-- الخطوة 3: اختيار الجهاز -->
-  <div class="step-box result-section" id="device-section">
-    <div style="display:flex;align-items:center;margin-bottom:16px">
+  <!-- الخطوة 3: ربط الجهاز -->
+  <div class="step-box" id="step3" style="display:none">
+    <div style="display:flex;align-items:center;margin-bottom:14px">
       <span class="step-num">3</span>
-      <span class="step-title">ربط الشهادة بجهاز في المنصة</span>
+      <span class="step-title">ربط الشهادة بجهاز</span>
     </div>
-    <div id="match-info" style="margin-bottom:12px"></div>
+    <div id="match-info" style="margin-bottom:12px;padding:12px;border-radius:8px;background:#f8fafc;font-size:13px"></div>
     <div class="field-group">
-      <label>اختر الجهاز</label>
-      <select class="device-select" id="device-select">
-        <option value="">— اختر جهاز —</option>
+      <label>اختر الجهاز يدوياً (إن لم يتطابق تلقائياً)</label>
+      <select id="device-select" style="padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;direction:rtl;font-family:inherit;width:100%;outline:none">
+        <option value="">— اختر جهاز موجود —</option>
+        <option value="NEW">➕ إنشاء جهاز جديد من هذه البيانات</option>
       </select>
     </div>
   </div>
 
   <!-- الخطوة 4: الحفظ -->
-  <div class="step-box result-section" id="save-section">
-    <div style="display:flex;align-items:center;margin-bottom:16px">
+  <div class="step-box" id="step4" style="display:none">
+    <div style="display:flex;align-items:center;margin-bottom:14px">
       <span class="step-num">4</span>
-      <span class="step-title">حفظ وتحديث الجهاز</span>
+      <span class="step-title">حفظ وتحديث</span>
     </div>
-
-    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#92400e">
-      ⚠️ سيتم تحديث تاريخ المعايرة وحالة الجهاز ورفع الشهادة تلقائياً
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:#92400e">
+      ⚠️ سيتم تحديث تاريخ المعايرة وحالة الجهاز تلقائياً ورفع الشهادة في ملف الجهاز
     </div>
-
-    <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn-secondary" onclick="resetAll()">🔄 رفع شهادة أخرى</button>
       <button class="btn-primary" id="save-btn" onclick="saveToDevice()">💾 حفظ وتحديث الجهاز</button>
     </div>
-
     <div id="success-msg" style="display:none;margin-top:14px">
-      <div class="success-banner">✅ تم تحديث بيانات الجهاز بنجاح!</div>
-      <div style="display:flex;gap:10px;margin-top:12px">
+      <div class="success-banner">✅ تم التحديث بنجاح!</div>
+      <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
         <button class="btn-secondary" onclick="resetAll()">رفع شهادة أخرى</button>
         <button class="btn-primary" id="goto-btn">← عرض الجهاز</button>
       </div>
@@ -149,20 +120,25 @@
 
 <script src="config.js"></script>
 <script>
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 const { createClient } = supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// خريطة الأكواد → الأقسام
+const CODE_DEPT = { 'HA':'antibiotics','TO':'toxicology','PS':'pesticides','CC':'contaminants','FF':'food-fraud' };
+const CODE_NAME = { 'HA':'قسم المضادات الحيوية والهرمونات','TO':'قسم السموم','PS':'قسم المبيدات','CC':'قسم الملوثات الكيميائية','FF':'قسم الغش الغذائي' };
+
 let uploadedFile = null;
 let allDevices   = [];
-let matchedDevId = null;
+let allDepts     = [];
+let matchedId    = null;
+let isNew        = false;
 
-// ── تحميل الأجهزة ──────────────────────────────
-async function loadDevices() {
-  const { data } = await db.from('devices').select('id,name,serial_number,quality_code');
-  allDevices = data || [];
+async function init() {
+  const { data: devs }  = await db.from('devices').select('id,name,serial_number,quality_code,department_id');
+  const { data: depts } = await db.from('departments').select('*');
+  allDevices = devs  || [];
+  allDepts   = depts || [];
   const sel = document.getElementById('device-select');
   allDevices.forEach(d => {
     const o = document.createElement('option');
@@ -171,173 +147,152 @@ async function loadDevices() {
     sel.appendChild(o);
   });
 }
-loadDevices();
+init();
 
-// ── Drag & Drop ─────────────────────────────────
 function handleDrop(e) {
-  e.preventDefault();
+  e.preventDefault(); e.currentTarget.classList.remove('drag');
   const f = e.dataTransfer.files[0];
-  if (f?.type === 'application/pdf') handleFile(f);
-  else alert('يرجى رفع ملف PDF فقط');
+  if (f?.type==='application/pdf') handleFile(f);
+  else alert('يرجى رفع PDF فقط');
 }
 
-// ── معالجة الملف ────────────────────────────────
 async function handleFile(file) {
   uploadedFile = file;
-  setUploadUI(file.name, file.size);
-  showProgress(10, 'جاري فتح الملف...');
+  document.getElementById('upload-area').classList.add('has-file');
+  document.getElementById('up-icon').textContent = '✅';
+  document.getElementById('up-text').textContent = file.name;
+  document.getElementById('up-sub').textContent  = (file.size/1024).toFixed(0)+' KB';
+  document.getElementById('progress-box').style.display='block';
 
+  setProgress(10,'جاري فتح الملف...');
   const text = await extractText(file);
-  showProgress(60, 'جاري تحليل البيانات...');
-
+  setProgress(50,'جاري تحليل البيانات...');
   const data = parseData(text);
-  showProgress(90, 'جاري مطابقة الجهاز...');
-
+  setProgress(80,'جاري البحث عن الجهاز...');
   fillFields(data, text);
+  detectDeptFromCode();
   autoMatch(data);
-  showProgress(100, '✅ اكتملت القراءة');
+  setProgress(100,'✅ اكتمل');
 
-  setTimeout(() => {
-    document.getElementById('progress-box').style.display = 'none';
-    document.querySelectorAll('.result-section').forEach(el => el.style.display = 'block');
-  }, 500);
+  setTimeout(()=>{
+    document.getElementById('progress-box').style.display='none';
+    ['step2','step3','step4'].forEach(id=>document.getElementById(id).style.display='block');
+  }, 400);
 }
 
-// ── استخراج النص من PDF ─────────────────────────
 async function extractText(file) {
   const buf = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const pdf = await pdfjsLib.getDocument({data:buf}).promise;
   let txt = '';
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page    = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    txt += content.items.map(x => x.str).join(' ') + '\n';
+  for (let i=1; i<=pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const c    = await page.getTextContent();
+    txt += c.items.map(x=>x.str).join(' ') + '\n';
   }
   return txt;
 }
 
-// ── تحليل البيانات بالأنماط ─────────────────────
 function parseData(text) {
   const t = text;
 
-  // ── اسم الجهاز: ابحث عن كلمات مفتاحية شائعة ──
-  const devicePatterns = [
-    /(?:instrument|equipment|device|جهاز|أداة)[:\s]+([^\n,]{3,60})/i,
-    /(?:description|وصف)[:\s]+([^\n,]{3,60})/i,
-    /(HPLC|GC[-\s]?MS|ICP|LCMS|LC[-\s]MS|AAS|FTIR|UV[-\s]Vis|Spectrophotometer|Balance|pH\s?meter|Centrifuge|Autoclave|Pipette)[^\n]*/i,
-  ];
+  // اسم الجهاز — ابحث عن نموذج الماصة أو الجهاز
   let deviceName = null;
-  for (const p of devicePatterns) {
+  const devPatterns = [
+    /Pipette model[:\s]+([^\n]{3,50})/i,
+    /(?:instrument|equipment|device model|جهاز)[:\s]+([^\n]{3,50})/i,
+    /(HPLC|GC[-\s]?MS|ICP|LC[-\s]MS|AAS|FTIR|UV|Balance|Pipette|Centrifuge|Autoclave|Spectrophotometer|pH\s?meter)[^\n]{0,40}/i,
+    /(?:description|وصف)[:\s]+([^\n]{3,50})/i,
+  ];
+  for (const p of devPatterns) {
     const m = t.match(p);
-    if (m) { deviceName = m[0].substring(0, 60).trim(); break; }
+    if (m) { deviceName = (m[1]||m[0]).trim().substring(0,60); break; }
   }
 
-  // ── الرقم التسلسلي ──
-  const serialPatterns = [
-    /(?:serial\s*(?:number|no|#)|s\/n|الرقم التسلسلي)[:\s#]*([A-Z0-9\-]{4,25})/i,
-    /S\.?N\.?\s*:?\s*([A-Z0-9\-]{4,25})/i,
-  ];
+  // الرقم التسلسلي
   let serial = null;
-  for (const p of serialPatterns) {
+  const serPatterns = [
+    /Serial\s*[Nn]umber[:\s]+([A-Z0-9\-]{4,25})/i,
+    /S\.?N\.?\s*:?\s*([A-Z0-9\-]{4,25})/i,
+    /Serial[:\s]+([A-Z0-9\-]{4,25})/i,
+  ];
+  for (const p of serPatterns) {
     const m = t.match(p);
     if (m) { serial = m[1].trim(); break; }
   }
 
-  // ── كود الجودة / رقم الشهادة ──
-  const certPatterns = [
-    /(?:cert(?:ificate)?\s*(?:no|number|#)|شهادة رقم|رقم المعايرة|cal(?:ibration)?\s*(?:no|number|#))[:\s#]*([A-Z0-9\-\/]{3,30})/i,
-    /(?:report\s*(?:no|number)|تقرير رقم)[:\s#]*([A-Z0-9\-\/]{3,30})/i,
+  // كود الجودة / Asset ID
+  let qcode = null;
+  const qcPatterns = [
+    /Asset\s*ID[:\s]+([A-Z0-9\-\/]{3,25})/i,
+    /(?:Certificate\s*#|Cert\s*No|Certificate\s*Number)[:\s#]+([A-Z0-9\-\/]{3,25})/i,
+    /(?:Report\s*(?:No|Number)|Cal(?:ibration)?\s*(?:No|Number|#))[:\s#]+([A-Z0-9\-\/]{3,25})/i,
   ];
-  let certCode = null;
-  for (const p of certPatterns) {
+  for (const p of qcPatterns) {
     const m = t.match(p);
-    if (m) { certCode = m[1].trim(); break; }
+    if (m) { qcode = m[1].trim(); break; }
   }
 
-  // ── التواريخ ──
-  // أنماط متعددة: DD/MM/YYYY أو MM/DD/YYYY أو YYYY-MM-DD أو DD-Mon-YYYY
-  const dateRegex = [
-    /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/g,
-    /(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/g,
-    /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})/gi,
-  ];
-
+  // التواريخ
   let allDates = [];
-
-  // النمط DD/MM/YYYY أو MM/DD/YYYY
   const r1 = /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/g;
   let m;
-  while ((m = r1.exec(t)) !== null) {
-    const d = parseInt(m[1]), mo = parseInt(m[2]), y = parseInt(m[3]);
-    if (y >= 2000 && y <= 2035 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
-      allDates.push(new Date(y, mo - 1, d));
-    }
+  while ((m=r1.exec(t))!==null) {
+    const d=+m[1],mo=+m[2],y=+m[3];
+    if (y>=2000&&y<=2035&&mo>=1&&mo<=12&&d>=1&&d<=31) allDates.push(new Date(y,mo-1,d));
   }
-
-  // النمط YYYY-MM-DD
   const r2 = /(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/g;
-  while ((m = r2.exec(t)) !== null) {
-    const y = parseInt(m[1]), mo = parseInt(m[2]), d = parseInt(m[3]);
-    if (y >= 2000 && y <= 2035 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
-      allDates.push(new Date(y, mo - 1, d));
-    }
+  while ((m=r2.exec(t))!==null) {
+    const y=+m[1],mo=+m[2],d=+m[3];
+    if (y>=2000&&y<=2035&&mo>=1&&mo<=12&&d>=1&&d<=31) allDates.push(new Date(y,mo-1,d));
+  }
+  // نمط 09.02.2026
+  const r3 = /(\d{2})\.(\d{2})\.(\d{4})/g;
+  while ((m=r3.exec(t))!==null) {
+    const d=+m[1],mo=+m[2],y=+m[3];
+    if (y>=2000&&y<=2035&&mo>=1&&mo<=12&&d>=1&&d<=31) allDates.push(new Date(y,mo-1,d));
   }
 
-  // النمط 15 Jan 2024
-  const months = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
-  const r3 = /(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{4})/gi;
-  while ((m = r3.exec(t)) !== null) {
-    const d = parseInt(m[1]), mo = months[m[2].toLowerCase()], y = parseInt(m[3]);
-    if (y >= 2000 && y <= 2035) allDates.push(new Date(y, mo, d));
+  // ابحث عن Next due بشكل خاص
+  let nextDueDate = null;
+  const nextDueMatch = t.match(/Next\s*due[:\s]+(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{4})/i);
+  if (nextDueMatch) {
+    const parts = nextDueMatch[1].split(/[\/\.\-]/);
+    if (parts.length===3) nextDueDate = new Date(+parts[2], +parts[0]-1, +parts[1]);
   }
 
-  // إزالة المكرر وترتيب
-  allDates = [...new Set(allDates.map(d => d.toISOString().split('T')[0]))]
-    .sort()
-    .map(s => new Date(s));
-
-  let calDate  = null;
-  let nextDate = null;
-
-  if (allDates.length >= 2) {
-    // أصغر تاريخ = تاريخ المعايرة، أكبر تاريخ = التاريخ القادم
-    calDate  = allDates[0];
-    nextDate = allDates[allDates.length - 1];
-  } else if (allDates.length === 1) {
-    calDate = allDates[0];
+  // ابحث عن Date (تاريخ المعايرة)
+  let calDateSpecific = null;
+  const calMatch = t.match(/(?:^|\s)Date[:\s]+(\d{2}\.\d{2}\.\d{4})/im);
+  if (calMatch) {
+    const parts = calMatch[1].split('.');
+    calDateSpecific = new Date(+parts[2], +parts[1]-1, +parts[0]);
   }
 
-  // ── جهة الاعتماد ──
-  const labPatterns = [
-    /(?:laboratory|lab|مختبر|معمل|جهة الاعتماد|accredited\s*by)[:\s]+([^\n]{3,60})/i,
-    /(?:issued\s*by|صادر عن|calibrated\s*by)[:\s]+([^\n]{3,60})/i,
-  ];
+  allDates = [...new Set(allDates.map(d=>d.toISOString().split('T')[0]))].sort().map(s=>new Date(s));
+
+  const calDate  = calDateSpecific || (allDates.length>0 ? allDates[0] : null);
+  const nextDate = nextDueDate     || (allDates.length>1 ? allDates[allDates.length-1] : null);
+
+  // جهة الاعتماد
   let labName = null;
-  for (const p of labPatterns) {
-    const m2 = t.match(p);
-    if (m2) { labName = m2[1].trim().substring(0, 60); break; }
-  }
+  const labMatch = t.match(/(?:Name|مختبر|Laboratory|Lab|Calibrated by)[:\s]+([^\n]{3,50})/i);
+  if (labMatch) labName = labMatch[1].trim().substring(0,60);
 
   return {
     device_name:           deviceName,
     serial_number:         serial,
-    quality_code:          certCode,
-    calibration_date:      calDate  ? toInputDate(calDate)  : null,
-    next_calibration_date: nextDate ? toInputDate(nextDate) : null,
+    quality_code:          qcode,
+    calibration_date:      calDate  ? calDate.toISOString().split('T')[0]  : null,
+    next_calibration_date: nextDate ? nextDate.toISOString().split('T')[0] : null,
     lab_name:              labName,
   };
 }
 
-function toInputDate(d) {
-  return d.toISOString().split('T')[0];
-}
-
-function fillFields(d, rawText) {
+function fillFields(d, raw) {
   const set = (id, val) => {
     if (!val) return;
     const el = document.getElementById(id);
-    el.value = val;
-    el.classList.add('found');
+    el.value = val; el.classList.add('found');
   };
   set('ex-name',    d.device_name);
   set('ex-serial',  d.serial_number);
@@ -345,50 +300,56 @@ function fillFields(d, rawText) {
   set('ex-caldate', d.calibration_date);
   set('ex-nextdate',d.next_calibration_date);
   set('ex-lab',     d.lab_name);
-  document.getElementById('raw-text').textContent = rawText.substring(0, 800);
+  document.getElementById('raw-text').textContent = raw.substring(0,1000);
 }
 
-// ── مطابقة تلقائية مع الأجهزة ──────────────────
+function detectDeptFromCode() {
+  const code = document.getElementById('ex-qcode').value.toUpperCase();
+  const el   = document.getElementById('dept-detected');
+  for (const [key, name] of Object.entries(CODE_NAME)) {
+    if (code.includes('-'+key+'-') || code.includes(key+'-') || code.endsWith(key) || code.startsWith(key)) {
+      el.textContent = '✅ '+name;
+      return key;
+    }
+  }
+  el.textContent = '';
+  return null;
+}
+
 function autoMatch(d) {
-  const serial = (d.serial_number || '').toLowerCase().trim();
-  const name   = (d.device_name   || '').toLowerCase().trim();
+  const serial = (d.serial_number||'').toLowerCase().trim();
+  const qcode  = (d.quality_code||'').toLowerCase().trim();
   const div    = document.getElementById('match-info');
 
   let matched = null;
-  if (serial) matched = allDevices.find(dev => dev.serial_number.toLowerCase() === serial);
-  if (!matched && name) {
-    matched = allDevices.find(dev =>
-      dev.name.toLowerCase().includes(name.substring(0,10)) ||
-      name.includes(dev.name.toLowerCase().substring(0,10))
-    );
-  }
+  if (serial) matched = allDevices.find(dev => dev.serial_number.toLowerCase()===serial);
+  if (!matched && qcode) matched = allDevices.find(dev => dev.quality_code?.toLowerCase()===qcode);
 
   if (matched) {
-    matchedDevId = matched.id;
+    matchedId = matched.id; isNew = false;
     document.getElementById('device-select').value = matched.id;
-    div.innerHTML = `<span class="match-badge match-found">✅ تطابق تلقائي</span> <strong style="margin-right:6px">${matched.name}</strong>`;
+    div.innerHTML = `<span class="match-badge match-found">✅ تطابق تلقائي</span> <strong style="margin-right:8px">${matched.name}</strong> — ${matched.serial_number}`;
   } else {
-    matchedDevId = null;
-    div.innerHTML = `<span class="match-badge match-none">⚠️ لم يُعثر على تطابق — اختر يدوياً</span>`;
+    matchedId = null; isNew = true;
+    document.getElementById('device-select').value = 'NEW';
+    div.innerHTML = `<span class="match-badge match-new">➕ جهاز جديد</span> <span style="margin-right:8px">لم يُعثر على تطابق — سيُنشأ ملف جديد تلقائياً</span>`;
   }
 }
 
-// ── حفظ وتحديث الجهاز ──────────────────────────
 async function saveToDevice() {
-  const deviceId = document.getElementById('device-select').value || matchedDevId;
-  if (!deviceId) { alert('يرجى اختيار الجهاز أولاً'); return; }
-
-  const calDate  = document.getElementById('ex-caldate').value;
-  const nextDate = document.getElementById('ex-nextdate').value;
-  if (!calDate || !nextDate) { alert('يرجى التأكد من إدخال تاريخَي المعايرة'); return; }
+  const sel = document.getElementById('device-select').value || (isNew?'NEW':matchedId);
+  const cal  = document.getElementById('ex-caldate').value;
+  const next = document.getElementById('ex-nextdate').value;
+  if (!cal||!next) { alert('يرجى إدخال تاريخَي المعايرة'); return; }
 
   const btn = document.getElementById('save-btn');
-  btn.disabled = true; btn.textContent = 'جاري الحفظ...';
+  btn.disabled=true; btn.textContent='جاري الحفظ...';
 
-  // رفع PDF على Supabase
+  // رفع PDF
   let certUrl = null;
   if (uploadedFile) {
-    const path = `${deviceId}/${Date.now()}.pdf`;
+    const tempId = sel==='NEW' ? 'new-'+Date.now() : sel;
+    const path = `${tempId}/${Date.now()}.pdf`;
     const { error } = await db.storage.from('certificates').upload(path, uploadedFile);
     if (!error) {
       const { data: { publicUrl } } = db.storage.from('certificates').getPublicUrl(path);
@@ -396,64 +357,84 @@ async function saveToDevice() {
     }
   }
 
-  // تحديث الجهاز
-  const update = { calibration_date: calDate, next_calibration_date: nextDate };
-  if (certUrl) update.certificate_url = certUrl;
-  await db.from('devices').update(update).eq('id', deviceId);
+  const name   = document.getElementById('ex-name').value.trim();
+  const serial = document.getElementById('ex-serial').value.trim();
+  const qcode  = document.getElementById('ex-qcode').value.trim();
+  const lab    = document.getElementById('ex-lab').value.trim();
+
+  let finalId = sel;
+
+  if (sel==='NEW') {
+    // تحديد القسم تلقائياً
+    let deptId = null;
+    const codeKey = detectDeptFromCode();
+    if (codeKey) {
+      const slug = CODE_DEPT[codeKey];
+      const dept = allDepts.find(d=>d.slug===slug);
+      if (dept) deptId = dept.id;
+    }
+
+    const { data, error } = await db.from('devices').insert([{
+      name: name||serial||qcode||'جهاز جديد',
+      serial_number: serial||'SN-'+Date.now(),
+      quality_code: qcode||'',
+      department_id: deptId,
+      calibration_date: cal,
+      next_calibration_date: next,
+      certificate_url: certUrl,
+      qr_data: JSON.stringify({ name, serial, code: qcode }),
+    }]).select();
+    if (error) { alert('خطأ: '+error.message); btn.disabled=false; btn.textContent='💾 حفظ وتحديث الجهاز'; return; }
+    finalId = data?.[0]?.id;
+  } else {
+    await db.from('devices').update({
+      calibration_date: cal,
+      next_calibration_date: next,
+      ...(certUrl ? { certificate_url: certUrl } : {})
+    }).eq('id', sel);
+    finalId = sel;
+  }
 
   // إضافة للسجل
-  const lab = document.getElementById('ex-lab').value;
   await db.from('calibration_logs').insert([{
-    device_id: deviceId,
-    calibration_date: calDate,
-    next_calibration_date: nextDate,
+    device_id: finalId,
+    calibration_date: cal,
+    next_calibration_date: next,
     certificate_url: certUrl,
     notes: lab ? `جهة المعايرة: ${lab}` : null,
   }]);
 
-  // نجاح
-  btn.style.display = 'none';
-  document.getElementById('success-msg').style.display = 'block';
-  document.getElementById('goto-btn').onclick = () => location.href = `device.html?id=${deviceId}`;
+  btn.style.display='none';
+  document.getElementById('success-msg').style.display='block';
+  document.getElementById('goto-btn').onclick = () => location.href=`device.html?id=${finalId}`;
 }
 
-// ── إعادة الضبط ─────────────────────────────────
+function setProgress(pct, msg) {
+  document.getElementById('prog').style.width = pct+'%';
+  document.getElementById('prog-msg').textContent = msg;
+}
+
 function resetAll() {
-  uploadedFile = null; matchedDevId = null;
-  ['ex-name','ex-serial','ex-qcode','ex-lab'].forEach(id => {
-    const el = document.getElementById(id); el.value = ''; el.classList.remove('found');
+  uploadedFile=null; matchedId=null; isNew=false;
+  document.getElementById('upload-area').className='upload-area';
+  document.getElementById('up-icon').textContent='📄';
+  document.getElementById('up-text').textContent='اضغط أو اسحب ملف PDF هنا';
+  document.getElementById('up-sub').textContent='يقرأ شهادات المعايرة تلقائياً';
+  document.getElementById('progress-box').style.display='none';
+  document.getElementById('prog').style.width='0%';
+  ['step2','step3','step4'].forEach(id=>document.getElementById(id).style.display='none');
+  ['ex-name','ex-serial','ex-qcode','ex-caldate','ex-nextdate','ex-lab'].forEach(id=>{
+    const el=document.getElementById(id); el.value=''; el.classList.remove('found');
   });
-  ['ex-caldate','ex-nextdate'].forEach(id => {
-    const el = document.getElementById(id); el.value = ''; el.classList.remove('found');
-  });
-  document.getElementById('upload-area').className = 'upload-area';
-  document.getElementById('upload-icon').textContent = '📄';
-  document.getElementById('upload-text').textContent = 'اضغط لاختيار ملف PDF أو اسحبه هنا';
-  document.getElementById('upload-sub').textContent  = 'يدعم: PDF فقط • مجاني 100%';
-  document.getElementById('progress-box').style.display = 'none';
-  document.getElementById('progress-fill').style.width   = '0%';
-  document.querySelectorAll('.result-section').forEach(el => el.style.display = 'none');
-  document.getElementById('match-info').innerHTML = '';
-  document.getElementById('device-select').value  = '';
-  document.getElementById('raw-text').textContent = '';
-  document.getElementById('save-btn').style.display   = 'inline-block';
-  document.getElementById('save-btn').disabled        = false;
-  document.getElementById('save-btn').textContent     = '💾 حفظ وتحديث الجهاز';
-  document.getElementById('success-msg').style.display = 'none';
-  document.getElementById('pdf-file').value = '';
-}
-
-function setUploadUI(name, size) {
-  document.getElementById('upload-area').classList.add('has-file');
-  document.getElementById('upload-icon').textContent = '✅';
-  document.getElementById('upload-text').textContent = name;
-  document.getElementById('upload-sub').textContent  = (size/1024).toFixed(0) + ' KB';
-}
-
-function showProgress(pct, msg) {
-  document.getElementById('progress-box').style.display = 'block';
-  document.getElementById('progress-fill').style.width  = pct + '%';
-  document.getElementById('status-msg').textContent     = msg;
+  document.getElementById('match-info').innerHTML='';
+  document.getElementById('device-select').value='';
+  document.getElementById('raw-text').textContent='';
+  document.getElementById('dept-detected').textContent='';
+  document.getElementById('save-btn').style.display='inline-block';
+  document.getElementById('save-btn').disabled=false;
+  document.getElementById('save-btn').textContent='💾 حفظ وتحديث الجهاز';
+  document.getElementById('success-msg').style.display='none';
+  document.getElementById('pdf-file').value='';
 }
 </script>
 </body>
