@@ -218,6 +218,240 @@ function smartParse(text) {
     lab_name:              { value: null, confidence: 0, source: '' },
   };
 
+  // ════════════════════════════════════════
+  // المنطق الأساسي: القيمة قد تكون قبل أو بعد التسمية
+  // نبحث في السطر الحالي والسطر السابق والتالي
+  // ════════════════════════════════════════
+
+  function findValue(labelPatterns, valuePattern, searchRange=2) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      // هل هذا السطر هو التسمية؟
+      const isLabel = labelPatterns.some(p => p.test(line));
+      if (!isLabel) continue;
+
+      // ابحث في السطور المحيطة
+      for (let offset = -searchRange; offset <= searchRange; offset++) {
+        if (offset === 0) continue;
+        const idx = i + offset;
+        if (idx < 0 || idx >= lines.length) continue;
+        const candidate = lines[idx].trim();
+        if (valuePattern.test(candidate) && candidate.length >= 2) {
+          return { value: candidate, lineIndex: idx };
+        }
+      }
+
+      // ابحث في نفس السطر بعد التسمية
+      for (const p of labelPatterns) {
+        const m = line.match(new RegExp(p.source + '[:\\s]+(.+)', 'i'));
+        if (m) return { value: m[1].trim(), lineIndex: i };
+      }
+    }
+    return null;
+  }
+
+  // ── 1. كود الجودة ──────────────────────────────────────────
+  // أولاً: ابحث عن النمط المباشر في كل النص
+  const directCode = full.match(/\b([A-Z]{2,6}[-\/](HA|TO|PS|CC|FF)[-\/]\d{2,6})\b/i);
+  if (directCode) {
+    result.quality_code = { value: directCode[1], confidence: 100, source: 'كود الجودة' };
+  } else {
+    // ابحث بعد أو قبل التسمية
+    const qcFound = findValue(
+      [/^(Asset\s*ID|UUC\s*ID|Equipment\s*ID|Customer\s*Item\s*ID|Item\s*ID|Tag\s*No|Lab\s*No|كود الجودة|رقم الجهاز)$/i],
+      /^[A-Z]{2,6}[-\/][A-Z0-9]{1,4}[-\/]\d{2,6}$/i
+    );
+    if (qcFound) result.quality_code = { value: qcFound.value, confidence: 90, source: 'كود الجودة' };
+  }
+
+  // ── 2. الرقم التسلسلي ──────────────────────────────────────
+  // في شهادة Calibry: القيمة تأتي قبل "Serial Number"
+  // في شهادات أخرى: القيمة تأتي بعد "Serial Number:"
+  let serialFound = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // نمط 1: "Serial Number" في سطر وحده، والرقم في السطر قبله أو بعده
+    if (/^Serial\s*Number$/i.test(line)) {
+      // السطر السابق (شهادة Calibry)
+      if (i > 0) {
+        const prev = lines[i-1].trim();
+        if (/^\d{5,20}$/.test(prev)) {
+          result.serial_number = { value: prev, confidence: 100, source: 'Serial Number' };
+          serialFound = true; break;
+        }
+      }
+      // السطر التالي
+      if (i < lines.length-1) {
+        const next = lines[i+1].trim();
+        if (/^[A-Z0-9\-]{4,20}$/i.test(next) && !/^(CONDITIONS|BALANCE|PASSED|FAILED|N\/A|Good)$/i.test(next)) {
+          result.serial_number = { value: next, confidence: 100, source: 'Serial Number' };
+          serialFound = true; break;
+        }
+      }
+    }
+
+    // نمط 2: "Serial Number: XXXX" في نفس السطر
+    const inLine = line.match(/Serial\s*(?:Number|No\.?)[:\s]+([A-Z0-9\-]{4,20})/i);
+    if (inLine && !/^(CONDITIONS|BALANCE|PASSED|FAILED)$/i.test(inLine[1])) {
+      result.serial_number = { value: inLine[1].trim(), confidence: 100, source: 'Serial Number' };
+      serialFound = true; break;
+    }
+
+    // نمط 3: S/N: XXXX
+    const snLine = line.match(/^S[\/\.]?N[:\s]+([A-Z0-9\-]{4,20})$/i);
+    if (snLine) {
+      result.serial_number = { value: snLine[1].trim(), confidence: 95, source: 'S/N' };
+      serialFound = true; break;
+    }
+  }
+
+  // fallback: أي رقم من 6-10 أرقام متتالية بعد Serial
+  if (!serialFound) {
+    const m = full.match(/Serial\s*(?:Number|No)?[:\s#]*\n?([0-9]{5,15})/i);
+    if (m) {
+      result.serial_number = { value: m[1].trim(), confidence: 85, source: 'Serial Number' };
+      serialFound = true;
+    }
+  }
+
+  // ── 3. اسم الجهاز ──────────────────────────────────────────
+  // في شهادة Calibry: القيمة قبل التسمية
+  const nameLabels = [
+    /^(Item\s*Name|Instrument\s*Name|Equipment\s*Name|UUC\s*Description|اسم الجهاز)$/i,
+    /^(Pipette\s*model|Model\s*\/\s*Type|Type\/Model)$/i,
+    /^(Description)$/i,
+  ];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isLabel = nameLabels.some(p => p.test(line));
+    if (!isLabel) continue;
+
+    // السطر السابق (شهادة Calibry)
+    if (i > 0) {
+      const prev = lines[i-1].trim();
+      if (prev.length >= 3 && !/^(N\/A|NA|CONDITIONS|BALANCE|\d+)$/i.test(prev) && !/^\d+$/.test(prev)) {
+        result.device_name = { value: prev.substring(0,60), confidence: 95, source: 'اسم الجهاز' };
+        break;
+      }
+    }
+    // السطر التالي
+    if (i < lines.length-1) {
+      const next = lines[i+1].trim();
+      if (next.length >= 3 && !/^(N\/A|NA|CONDITIONS|BALANCE|\d+)$/i.test(next)) {
+        result.device_name = { value: next.substring(0,60), confidence: 90, source: 'اسم الجهاز' };
+        break;
+      }
+    }
+    // في نفس السطر
+    const inLine = line.match(/(?:Item\s*Name|Instrument|Equipment|Description|Model)[:\s]+(.{3,50})/i);
+    if (inLine) { result.device_name = { value: inLine[1].trim().substring(0,60), confidence: 85, source: 'اسم الجهاز' }; break; }
+  }
+
+  // fallback: أسماء أجهزة شائعة
+  if (!result.device_name.value) {
+    const known = full.match(/\b(LAMBDA\s*PLUS[^\n]{0,20}|HPLC[^\n]{0,20}|GC[-\s]?MS[^\n]{0,15}|ICP[^\n]{0,15}|Spectrophotometer|Centrifuge|Autoclave|pH\s*[Mm]eter|Balance|Micropipette|Thermometer|Incubator|Vortex|Water\s*Bath)\b[^\n]{0,30}/i);
+    if (known) result.device_name = { value: known[0].trim().substring(0,60), confidence: 70, source: 'نوع الجهاز' };
+  }
+
+  // ── 4. التواريخ ────────────────────────────────────────────
+  const dateEntries = [];
+  const calKeywords  = /(?:Calibration\s*Date|Date\s*Calibrated|Date\s*of\s*Calibration|Calibrated\s*On|تاريخ المعايرة)/i;
+  const nextKeywords = /(?:Next\s*(?:Calibration\s*)?(?:Date|Due)|(?:Calibration\s*)?Due\s*Date|Recommended\s*Due\s*Date|Valid\s*Until|Expiry\s*Date|تاريخ المعايرة القادمة)/i;
+
+  // في شهادة Calibry: "Next due  Date  Performed by" ثم في السطر التالي "8/8/2026  09.02.2026  ..."
+  // نبحث عن هذا النمط الخاص
+  for (let i = 0; i < lines.length; i++) {
+    if (/Next\s*due/i.test(lines[i]) && /Date/i.test(lines[i])) {
+      // السطر التالي يحتوي التواريخ
+      if (i < lines.length-1) {
+        const nextLine = lines[i+1];
+        const dates = [...nextLine.matchAll(/(\d{1,2}[\/\.]\d{1,2}[\/\.]\d{4})/g)];
+        if (dates.length >= 2) {
+          // أول تاريخ = Next due، ثاني تاريخ = Date
+          const nd = dates[0][1].split(/[\/\.]/);
+          const cd = dates[1][1].split(/[\/\.]/);
+          // تحديد الصيغة: إذا الرقم الأول > 12 فهو يوم
+          if (+nd[0] > 12) {
+            dateEntries.push({ d:+nd[0], mo:+nd[1], y:+nd[2], type:'next', conf:98 });
+          } else {
+            dateEntries.push({ d:+nd[1], mo:+nd[0], y:+nd[2], type:'next', conf:95 });
+          }
+          if (+cd[0] > 12) {
+            dateEntries.push({ d:+cd[0], mo:+cd[1], y:+cd[2], type:'cal', conf:98 });
+          } else {
+            dateEntries.push({ d:+cd[1], mo:+cd[0], y:+cd[2], type:'cal', conf:95 });
+          }
+        }
+      }
+    }
+  }
+
+  // البحث العام عن التواريخ مع سياقها
+  const dateRe = /(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})/g;
+  let m2;
+  while ((m2 = dateRe.exec(full)) !== null) {
+    const d=+m2[1], mo=+m2[2], y=+m2[3];
+    if (y < 2020 || y > 2035 || mo < 1 || mo > 12 || d < 1 || d > 31) continue;
+    const before = full.substring(Math.max(0, m2.index-100), m2.index);
+    const after  = full.substring(m2.index, Math.min(full.length, m2.index+100));
+    let type = 'unknown', conf = 50;
+    if (calKeywords.test(before+after))  { type = 'cal';  conf = 95; }
+    if (nextKeywords.test(before+after)) { type = 'next'; conf = 95; }
+    if (/Next\s*due/i.test(after.substring(0,40)))  { type = 'next'; conf = 98; }
+    if (/\bDate\b/i.test(before.substring(before.length-30))) { type = 'cal'; conf = 90; }
+    dateEntries.push({ d, mo, y, type, conf });
+  }
+
+  // اختر أفضل التواريخ
+  const calDates  = dateEntries.filter(e=>e.type==='cal').sort((a,b)=>b.conf-a.conf);
+  const nextDates = dateEntries.filter(e=>e.type==='next').sort((a,b)=>b.conf-a.conf);
+  const unknown   = dateEntries.filter(e=>e.type==='unknown').sort((a,b)=>a.y*10000+a.mo*100+a.d-(b.y*10000+b.mo*100+b.d));
+
+  if (calDates.length > 0) {
+    const e = calDates[0];
+    result.calibration_date = { value: toISO(e.d,e.mo,e.y), confidence: e.conf, source: 'تاريخ المعايرة' };
+  } else if (unknown.length > 0) {
+    const e = unknown[0];
+    result.calibration_date = { value: toISO(e.d,e.mo,e.y), confidence: 55, source: 'تاريخ (راجع)' };
+  }
+
+  if (nextDates.length > 0) {
+    const e = nextDates[0];
+    result.next_calibration_date = { value: toISO(e.d,e.mo,e.y), confidence: e.conf, source: 'تاريخ القادمة' };
+  } else if (unknown.length > 1) {
+    const e = unknown[unknown.length-1];
+    result.next_calibration_date = { value: toISO(e.d,e.mo,e.y), confidence: 55, source: 'تاريخ (راجع)' };
+  }
+
+  // ── 5. جهة الاعتماد ────────────────────────────────────────
+  const labLabels = [/^(Customer\s*Name|Company\s*Name|Client\s*Name)$/i, /^(Name)$/i];
+  for (let i = 0; i < lines.length; i++) {
+    const isLabel = labLabels.some(p => p.test(lines[i]));
+    if (!isLabel) continue;
+    // السطر السابق أو التالي
+    for (const offset of [-1, 1]) {
+      const idx = i + offset;
+      if (idx < 0 || idx >= lines.length) continue;
+      const val = lines[idx].trim();
+      if (val.length >= 3 && !/^(N\/A|NA|Department|Address|Tel|Fax|Email|\d+)$/i.test(val)) {
+        result.lab_name = { value: val.substring(0,60), confidence: 85, source: 'جهة الاعتماد' };
+        break;
+      }
+    }
+    if (result.lab_name.value) break;
+  }
+
+  if (!result.lab_name.value) {
+    const m = full.match(/(?:Customer\s*Name|Company\s*Name)[:\s]+([^\n]{3,60})/i);
+    if (m) result.lab_name = { value: m[1].trim().substring(0,60), confidence: 80, source: 'جهة الاعتماد' };
+  }
+
+  return result;
+}
+
   // ── 1. كود الجودة ─────────────────────────────────────────────
   // النمط الأساسي: XXX-YY-NNN أو XXX/YY/NNN أو XXX YY NNN
   const codePatterns = [
