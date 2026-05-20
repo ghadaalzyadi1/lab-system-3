@@ -227,7 +227,60 @@ function smartParse(lines){
   const calKW=/(?:Calibration\s*Date|Date\s*(?:of\s*)?Calibrat|Calibrat(?:ed|ion)\s*(?:Date|On|Performed)|Issue\s*Date|Date\s*Calibrated|تاريخ\s*المعايرة)/i;
   const nxtKW=/(?:Next\s*(?:Calibration\s*)?(?:Date|Due)|(?:Calibration\s*)?Due\s*Date|Recommended\s*(?:Due|Calibration)\s*Date|Valid\s*Until|Expiry\s*Date|تاريخ\s*المعايرة\s*القادمة)/i;
   const entries=[];
-
+// نمط Calibry: التاريخ فوق التسمية
+    // 13.01.2025    6/13/2025
+    // Date          Next due
+    if(/^Date$/i.test(ln) && i > 0){
+      // السطر السابق قد يحتوي تاريخ المعايرة
+      const prevLn = lines[i-1]?.trim();
+      if(prevLn){
+        const euD = prevLn.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+        if(euD && +euD[3]>=2020 && +euD[3]<=2035){
+          entries.push({d:+euD[1],mo:+euD[2],y:+euD[3],type:'cal',conf:99});
+        }
+        // قد يكون في نفس السطر: "13.01.2025   6/13/2025"
+        const twoInPrev = [];
+        const euRe2 = /(\d{2})\.(\d{2})\.(\d{4})/g;
+        const usRe2 = /(\d{1,2})\/(\d{1,2})\/(\d{4})/g;
+        let dm2;
+        while((dm2=euRe2.exec(prevLn))!==null){
+          const d=+dm2[1],mo=+dm2[2],y=+dm2[3];
+          if(y>=2020&&y<=2035)twoInPrev.push({d,mo,y,pos:dm2.index,fmt:'EU'});
+        }
+        while((dm2=usRe2.exec(prevLn))!==null){
+          const mo=+dm2[1],d=+dm2[2],y=+dm2[3];
+          if(y>=2020&&y<=2035)twoInPrev.push({d,mo,y,pos:dm2.index,fmt:'US'});
+        }
+        if(twoInPrev.length>=2){
+          twoInPrev.sort((a,b)=>a.pos-b.pos);
+          entries.push({...twoInPrev[0],type:'cal', conf:99});
+          entries.push({...twoInPrev[1],type:'next',conf:99});
+        }
+      }
+      // ابحث عن "Next due" في سطور قريبة
+      for(let k=1;k<=3;k++){
+        const nxtLn=lines[i+k]?.trim();
+        if(!nxtLn)continue;
+        if(/^Next\s*due$/i.test(nxtLn)){
+          // السطر قبل "Next due" أو بعده
+          const aboveNext=lines[i+k-1]?.trim();
+          const usD=aboveNext?.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+          if(usD){
+            const mo=+usD[1],d=+usD[2],y=+usD[3];
+            if(y>=2020&&y<=2035)entries.push({d,mo,y,type:'next',conf:99});
+          }
+          break;
+        }
+        // التاريخ في نفس السطر مع "Next due"
+        if(/Next\s*due/i.test(nxtLn)){
+          const usD=nxtLn.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+          const euD=nxtLn.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+          if(usD){const mo=+usD[1],d=+usD[2],y=+usD[3];if(y>=2020&&y<=2035)entries.push({d,mo,y,type:'next',conf:99});}
+          else if(euD){const d=+euD[1],mo=+euD[2],y=+euD[3];if(y>=2020&&y<=2035)entries.push({d,mo,y,type:'next',conf:99});}
+          break;
+        }
+      }
+    }
   // نمط Calibry: "Next due Date Performed by" في سطر واحد
   // يليه: "8/8/2026 09.02.2026 Antibiotic" في سطر واحد
   for(let i=0;i<lines.length;i++){
