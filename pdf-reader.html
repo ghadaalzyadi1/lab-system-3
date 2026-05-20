@@ -227,73 +227,57 @@ function smartParse(lines) {
   const nextKeywords = /(?:Next\s*(?:Calibration\s*)?(?:Date|Due)|(?:Calibration\s*)?Due\s*Date|Recommended\s*(?:Due|Calibration)\s*Date|Valid\s*Until|Expiry\s*Date|تاريخ\s*المعايرة\s*القادمة)/i;
   const dateEntries  = [];
 
-  // نمط شهادة Calibry:
-  // "Next due Date Performed by" في سطر واحد
-  // يليه: "8/8/2026 09.02.2026 Antibiotic" في سطر واحد
+    // ── 4. التواريخ ──
+  let calDate = null, nextDate = null;
+
+  // ابحث عن "Next due" أولاً
   for (let i=0; i<lines.length; i++) {
-    const ln = lines[i].trim();
-
-    // البحث عن السطر الذي يحتوي "Next due" مع "Date"
-    if (/Next\s*due/i.test(ln) && /Date/i.test(ln)) {
-      // ابحث في السطور التالية عن التواريخ
-      for (let j=i+1; j<=Math.min(i+5, lines.length-1); j++) {
-        const nextLn = lines[j].trim();
-        if (!nextLn || /^(Repeated|Printed|Certificate|Page|Data|Template|Status|Passed)$/i.test(nextLn)) continue;
-
-        // البحث عن تاريخين في نفس السطر: "8/8/2026 09.02.2026"
-        const allDatesInLine = [];
-        const usRe = /(\d{1,2})\/(\d{1,2})\/(\d{4})/g;
-        const euRe = /(\d{2})\.(\d{2})\.(\d{4})/g;
-        let dm;
-
-        // تواريخ M/D/YYYY
-        while ((dm = usRe.exec(nextLn)) !== null) {
-          const mo=+dm[1], d=+dm[2], y=+dm[3];
-          if (y>=2020&&y<=2035&&mo>=1&&mo<=12&&d>=1&&d<=31)
-            allDatesInLine.push({d, mo, y, pos:dm.index, format:'US'});
-        }
-        // تواريخ DD.MM.YYYY
-        while ((dm = euRe.exec(nextLn)) !== null) {
-          const d=+dm[1], mo=+dm[2], y=+dm[3];
-          if (y>=2020&&y<=2035&&mo>=1&&mo<=12&&d>=1&&d<=31)
-            allDatesInLine.push({d, mo, y, pos:dm.index, format:'EU'});
-        }
-
-        if (allDatesInLine.length >= 2) {
-          // رتّب حسب الموضع في السطر
-          allDatesInLine.sort((a,b) => a.pos - b.pos);
-          // أول تاريخ = Next due، ثاني = تاريخ المعايرة
-          dateEntries.push({...allDatesInLine[0], type:'next', conf:99});
-          dateEntries.push({...allDatesInLine[1], type:'cal',  conf:99});
-          break;
-        } else if (allDatesInLine.length === 1) {
-          dateEntries.push({...allDatesInLine[0], type:'next', conf:95});
-        }
+    if (/next\s*due/i.test(lines[i])) {
+      // ربما في نفس السطر أو التالي
+      const inLine = lines[i].match(/(\d{1,2}[\/\.]\d{1,2}[\/\.]\d{4})/);
+      const inNext = lines[i+1] ? lines[i+1].match(/(\d{1,2}[\/\.]\d{1,2}[\/\.]\d{4})/) : null;
+      const raw = (inLine||inNext)?.[1];
+      if (raw) {
+        const p = raw.split(/[\/\.]/);
+        if (+p[2] > 2000) nextDate = toISO(+p[0], +p[1], +p[2]);
+        else nextDate = toISO(+p[1], +p[0], +p[2]);
       }
       break;
     }
+  }
 
-    // البحث عن "Next due" في سطر وحده (احتياطي)
-    if (/^Next\s*due$/i.test(ln)) {
-      const foundDates=[];
-      for (let j=i+1; j<=Math.min(i+8,lines.length-1); j++) {
-        const s=lines[j].trim();
-        if(/^(Date|Performed\s*by|Repeated|Printed|Certificate|Page|Data|Template|Status)$/i.test(s)) continue;
-        const usD=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-        const euD=s.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-        if(usD){
-          const mo=+usD[1],d=+usD[2],y=+usD[3];
-          if(y>=2020&&y<=2035) foundDates.push({d,mo,y,format:'US'});
-        } else if(euD){
-          const d=+euD[1],mo=+euD[2],y=+euD[3];
-          if(y>=2020&&y<=2035) foundDates.push({d,mo,y,format:'EU'});
-        }
-        if(foundDates.length>=2) break;
+  // ابحث عن "Date" (تاريخ المعايرة)
+  for (let i=0; i<lines.length; i++) {
+    if (/^date$/i.test(lines[i]) && lines[i+1]) {
+      const raw = lines[i+1].match(/(\d{1,2}[\/\.]\d{1,2}[\/\.]\d{4})/);
+      if (raw) {
+        const p = raw[1].split(/[\/\.]/);
+        calDate = toISO(+p[0], +p[1], +p[2]);
+        break;
       }
-      if(foundDates.length>=1) dateEntries.push({...foundDates[0],type:'next',conf:99});
-      if(foundDates.length>=2) dateEntries.push({...foundDates[1],type:'cal', conf:99});
+    }
+    // "Performed by ... Date 09.02.2026"
+    const m = lines[i].match(/Date\s+(\d{2}\.\d{2}\.\d{4})/i);
+    if (m) {
+      const p = m[1].split('.');
+      calDate = toISO(+p[0], +p[1], +p[2]);
       break;
     }
+  }
+
+  // إن لم نجد، اجمع كل التواريخ ورتبها
+  if (!calDate || !nextDate) {
+    const allDates = [];
+    const re = /(\d{1,2})[\/\.](\d{1,2})[\/\.](\d{4})/g;
+    let m;
+    while ((m=re.exec(t))!==null) {
+      const d=+m[1],mo=+m[2],y=+m[3];
+      if (y>=2020&&y<=2035&&mo>=1&&mo<=12&&d>=1&&d<=31)
+        allDates.push(toISO(d,mo,y));
+    }
+    const sorted = [...new Set(allDates)].sort();
+    if (!calDate  && sorted.length > 0) calDate  = sorted[0];
+    if (!nextDate && sorted.length > 1) nextDate = sorted[sorted.length-1];
   }
   // نمط شهادات Quality Compliance:
   // "Calibration Date: 31/08/2025" أو "Calibration Due Date: 31/08/2027"
