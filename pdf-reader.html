@@ -8,14 +8,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <link rel="stylesheet" href="style.css">
 <style>
-.field-wrap { display:flex; flex-direction:column; gap:5px; }
-.field-wrap label { font-size:12px; font-weight:600; color:#64748b; }
-.field-wrap input, .field-wrap select {
-  padding:10px 14px; border:1.5px solid #e2e8f0; border-radius:8px;
-  font-size:14px; direction:rtl; font-family:inherit; outline:none; width:100%;
-}
-.field-wrap input:focus { border-color:#3b82f6; }
-.field-wrap input.auto { border-color:#22c55e; background:#f0fdf4; }
+.field-wrap{display:flex;flex-direction:column;gap:5px}
+.field-wrap label{font-size:12px;font-weight:600;color:#64748b}
+.field-wrap input,.field-wrap select{padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;direction:rtl;font-family:inherit;outline:none;width:100%}
+.field-wrap input:focus{border-color:#3b82f6}
+.field-wrap input.auto{border-color:#22c55e;background:#f0fdf4}
 </style>
 </head>
 <body>
@@ -23,7 +20,10 @@
 <div class="page-header">
   <button class="back-btn" onclick="history.back()">← رجوع</button>
   <h1>📄 قارئ شهادات المعايرة</h1>
-  <span style="background:#dcfce7;color:#166634;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;margin-right:auto">يقبل أي تصميم</span>
+  <div style="display:flex;gap:8px;align-items:center;margin-right:auto">
+    <span style="background:#dcfce7;color:#166534;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700">يقبل أي تصميم</span>
+    <button onclick="openManualEdit()" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:6px 14px;font-size:12px;cursor:pointer;color:#374151;font-family:inherit">✏️ إدخال يدوي</button>
+  </div>
 </div>
 
 <div class="container" style="max-width:700px">
@@ -50,11 +50,13 @@
     </div>
   </div>
 
-  <!-- مراجعة البيانات قبل الحفظ -->
+  <!-- مراجعة وتعديل البيانات -->
   <div class="step-box" id="step-review" style="display:none">
-    <div style="display:flex;align-items:center;margin-bottom:16px">
-      <span class="step-num">2</span>
-      <span class="step-title">راجع البيانات وعدّل إن احتجت</span>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="step-num">2</span>
+        <span class="step-title">راجع البيانات وعدّل إن احتجت</span>
+      </div>
     </div>
 
     <div class="fields-grid">
@@ -100,71 +102,70 @@
 
 <script src="config.js"></script>
 <script>
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-const { createClient } = supabase;
-const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const {createClient}=supabase;
+const db=createClient(SUPABASE_URL,SUPABASE_KEY);
 
-const CODE_DEPT = {'HA':'antibiotics','TO':'toxicology','PS':'pesticides','CC':'contaminants','FF':'food-fraud'};
-const CODE_NAME = {'HA':'قسم المضادات الحيوية والهرمونات','TO':'قسم السموم','PS':'قسم المبيدات','CC':'قسم الملوثات الكيميائية','FF':'قسم الغش الغذائي'};
+const CODE_DEPT={'HA':'antibiotics','TO':'toxicology','PS':'pesticides','CC':'contaminants','FF':'food-fraud'};
+const CODE_NAME={'HA':'قسم المضادات الحيوية والهرمونات','TO':'قسم السموم','PS':'قسم المبيدات','CC':'قسم الملوثات الكيميائية','FF':'قسم الغش الغذائي'};
 
-let uploadedFile=null, allDevices=[], allDepts=[], parsedData=null;
+let uploadedFile=null,allDevices=[],allDepts=[],parsedData=null;
 
-// ══ تحميل البيانات ══════════════════════════
-async function init() {
-  const {data:devs}  = await db.from('devices').select('id,name,serial_number,quality_code');
-  const {data:depts} = await db.from('departments').select('*');
-  allDevices = devs  || [];
-  allDepts   = depts || [];
-  const sel = document.getElementById('r-device');
-  allDevices.forEach(d => {
-    const o = document.createElement('option');
-    o.value=d.id; o.textContent=`${d.name} — ${d.serial_number}`;
+async function init(){
+  const {data:devs} =await db.from('devices').select('id,name,serial_number,quality_code');
+  const {data:depts}=await db.from('departments').select('*');
+  allDevices=devs||[];
+  allDepts=depts||[];
+  const sel=document.getElementById('r-device');
+  allDevices.forEach(d=>{
+    const o=document.createElement('option');
+    o.value=d.id;o.textContent=`${d.name} — ${d.serial_number}`;
     sel.appendChild(o);
   });
 }
 init();
 
-// ══ استخراج النص من PDF مع ترتيب السطور ══
-async function extractText(file) {
-  const buf = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({data:buf}).promise;
-  let allLines = [];
-  for (let p=1; p<=pdf.numPages; p++) {
-    const page    = await pdf.getPage(p);
-    const content = await page.getTextContent();
-    const vp      = page.getViewport({scale:1});
-    const items   = content.items
-      .map(i=>({str:i.str.trim(), x:Math.round(i.transform[4]), y:Math.round(vp.height-i.transform[5])}))
+// ══ استخراج النص مع ترتيب السطور ══════════════
+async function extractText(file){
+  const buf=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  let allLines=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);
+    const content=await page.getTextContent();
+    const vp=page.getViewport({scale:1});
+    const items=content.items
+      .map(i=>({str:i.str.trim(),x:Math.round(i.transform[4]),y:Math.round(vp.height-i.transform[5])}))
       .filter(i=>i.str.length>0);
-    const rows = {};
+    const rows={};
     items.forEach(i=>{
       const key=Math.round(i.y/4)*4;
-      if(!rows[key]) rows[key]=[];
+      if(!rows[key])rows[key]=[];
       rows[key].push(i);
     });
     Object.keys(rows).sort((a,b)=>+a-+b).forEach(key=>{
       const line=rows[key].sort((a,b)=>a.x-b.x).map(i=>i.str).join(' ').trim();
-      if(line) allLines.push(line);
+      if(line)allLines.push(line);
     });
     allLines.push('---PAGE---');
   }
   return allLines;
 }
 
-// ══ القارئ الذكي ══════════════════════════
-function smartParse(lines) {
-  const full = lines.join('\n');
-  const data = { device_name:null, serial_number:null, quality_code:null,
-                 calibration_date:null, next_calibration_date:null, lab_name:null };
+// ══ القارئ الذكي ═══════════════════════════════
+function smartParse(lines){
+  const full=lines.join('\n');
+  const data={device_name:null,serial_number:null,quality_code:null,
+              calibration_date:null,next_calibration_date:null,lab_name:null};
 
-  // ── كود الجودة ──
-  const directCode = full.match(/\b([A-Z]{2,6}[-\/](HA|TO|PS|CC|FF)[-\/]\d{2,6})\b/i);
-  if (directCode) {
-    data.quality_code = directCode[1];
+  // ── 1. كود الجودة ──────────────────────────
+  const directCode=full.match(/\b([A-Z]{2,6}[-\/](HA|TO|PS|CC|FF)[-\/]\d{2,6})\b/i);
+  if(directCode){
+    data.quality_code=directCode[1];
   } else {
-    for (let i=0; i<lines.length; i++) {
-      if (/^(Asset\s*ID|UUC\s*ID|Equipment\s*ID|Customer\s*Item\s*ID|Item\s*ID|Tag\s*No|كود الجودة|رقم الجهاز)$/i.test(lines[i])) {
-        const prev=lines[i-1]?.trim(), next=lines[i+1]?.trim();
+    for(let i=0;i<lines.length;i++){
+      if(/^(Asset\s*ID|UUC\s*ID|Equipment\s*ID|Customer\s*Item\s*ID|Item\s*ID|Tag\s*No|كود الجودة|رقم الجهاز)$/i.test(lines[i])){
+        const prev=lines[i-1]?.trim(),next=lines[i+1]?.trim();
         const val=(prev?.match(/^[A-Z]{2,6}[-\/][A-Z0-9]{1,4}[-\/]\d{2,6}$/i)?prev:null)
                ||(next?.match(/^[A-Z]{2,6}[-\/][A-Z0-9]{1,4}[-\/]\d{2,6}$/i)?next:null);
         if(val){data.quality_code=val;break;}
@@ -174,10 +175,10 @@ function smartParse(lines) {
     }
   }
 
-  // ── الرقم التسلسلي ──
-  for (let i=0; i<lines.length; i++) {
+  // ── 2. الرقم التسلسلي ──────────────────────
+  for(let i=0;i<lines.length;i++){
     const line=lines[i];
-    if (/^Serial\s*Number$/i.test(line)) {
+    if(/^Serial\s*Number$/i.test(line)){
       const prev=lines[i-1]?.trim();
       if(prev&&/^\d{4,20}$/.test(prev)){data.serial_number=prev;break;}
       const next=lines[i+1]?.trim();
@@ -192,10 +193,10 @@ function smartParse(lines) {
   }
   if(!data.serial_number){
     const m=full.match(/Serial\s*(?:Number|No)?[:\s\n]+(\d{5,15})/i);
-    if(m) data.serial_number=m[1].trim();
+    if(m)data.serial_number=m[1].trim();
   }
 
-  // ── اسم الجهاز ──
+  // ── 3. اسم الجهاز ──────────────────────────
   const deviceTypes=['Analytical Balance','Semi-Micro Balance','Micro Balance','Balance',
     'Centrifuge','Microcentrifuge','Incubator','CO2 Incubator','Autoclave','Steam Sterilizer',
     'Refrigerator','Freezer','Ultra-Low Freezer','Thermometer','Thermocouple',
@@ -204,9 +205,9 @@ function smartParse(lines) {
     'Water Bath','Vortex Mixer','Orbital Shaker','Oven','Drying Oven','Laminar Flow','Biosafety Cabinet'];
 
   const nameLabels=/^(Item\s*Name|Instrument\s*Name|Equipment\s*Name|UUC\s*Description|Device\s*Name|Pipette\s*model|Model\s*\/\s*Type|Type\/Model|اسم الجهاز)$/i;
-  for (let i=0; i<lines.length; i++) {
+  for(let i=0;i<lines.length;i++){
     if(nameLabels.test(lines[i])){
-      const prev=lines[i-1]?.trim(), next=lines[i+1]?.trim();
+      const prev=lines[i-1]?.trim(),next=lines[i+1]?.trim();
       const candidates=[prev,next].filter(v=>v&&v.length>=2&&!/^(N\/A|NA|CONDITIONS|BALANCE|\d+|Good)$/i.test(v)&&!/^\d+\.?\d*$/.test(v));
       if(candidates.length>0){
         const best=candidates.find(c=>deviceTypes.some(t=>c.toLowerCase().includes(t.toLowerCase())))||candidates[0];
@@ -222,98 +223,93 @@ function smartParse(lines) {
     }
   }
 
-  // ── التواريخ (النسخة الصحيحة) ──
-  const calKeywords  = /(?:Calibration\s*Date|Date\s*(?:of\s*)?Calibrat|Calibrat(?:ed|ion)\s*(?:Date|On|Performed)|Issue\s*Date|Date\s*Calibrated|تاريخ\s*المعايرة)/i;
-  const nextKeywords = /(?:Next\s*(?:Calibration\s*)?(?:Date|Due)|(?:Calibration\s*)?Due\s*Date|Recommended\s*(?:Due|Calibration)\s*Date|Valid\s*Until|Expiry\s*Date|تاريخ\s*المعايرة\s*القادمة)/i;
-  const dateEntries  = [];
+  // ── 4. التواريخ ────────────────────────────
+  const calKW=/(?:Calibration\s*Date|Date\s*(?:of\s*)?Calibrat|Calibrat(?:ed|ion)\s*(?:Date|On|Performed)|Issue\s*Date|Date\s*Calibrated|تاريخ\s*المعايرة)/i;
+  const nxtKW=/(?:Next\s*(?:Calibration\s*)?(?:Date|Due)|(?:Calibration\s*)?Due\s*Date|Recommended\s*(?:Due|Calibration)\s*Date|Valid\s*Until|Expiry\s*Date|تاريخ\s*المعايرة\s*القادمة)/i;
+  const entries=[];
 
-    // ── 4. التواريخ ──
-  let calDate = null, nextDate = null;
-
-  // ابحث عن "Next due" أولاً
-  for (let i=0; i<lines.length; i++) {
-    if (/next\s*due/i.test(lines[i])) {
-      // ربما في نفس السطر أو التالي
-      const inLine = lines[i].match(/(\d{1,2}[\/\.]\d{1,2}[\/\.]\d{4})/);
-      const inNext = lines[i+1] ? lines[i+1].match(/(\d{1,2}[\/\.]\d{1,2}[\/\.]\d{4})/) : null;
-      const raw = (inLine||inNext)?.[1];
-      if (raw) {
-        const p = raw.split(/[\/\.]/);
-        if (+p[2] > 2000) nextDate = toISO(+p[0], +p[1], +p[2]);
-        else nextDate = toISO(+p[1], +p[0], +p[2]);
-      }
-      break;
-    }
-  }
-
-  // ابحث عن "Date" (تاريخ المعايرة)
-  for (let i=0; i<lines.length; i++) {
-    if (/^date$/i.test(lines[i]) && lines[i+1]) {
-      const raw = lines[i+1].match(/(\d{1,2}[\/\.]\d{1,2}[\/\.]\d{4})/);
-      if (raw) {
-        const p = raw[1].split(/[\/\.]/);
-        calDate = toISO(+p[0], +p[1], +p[2]);
-        break;
-      }
-    }
-    // "Performed by ... Date 09.02.2026"
-    const m = lines[i].match(/Date\s+(\d{2}\.\d{2}\.\d{4})/i);
-    if (m) {
-      const p = m[1].split('.');
-      calDate = toISO(+p[0], +p[1], +p[2]);
-      break;
-    }
-  }
-
-  // إن لم نجد، اجمع كل التواريخ ورتبها
-  if (!calDate || !nextDate) {
-    const allDates = [];
-    const re = /(\d{1,2})[\/\.](\d{1,2})[\/\.](\d{4})/g;
-    let m;
-    while ((m=re.exec(t))!==null) {
-      const d=+m[1],mo=+m[2],y=+m[3];
-      if (y>=2020&&y<=2035&&mo>=1&&mo<=12&&d>=1&&d<=31)
-        allDates.push(toISO(d,mo,y));
-    }
-    const sorted = [...new Set(allDates)].sort();
-    if (!calDate  && sorted.length > 0) calDate  = sorted[0];
-    if (!nextDate && sorted.length > 1) nextDate = sorted[sorted.length-1];
-  }
-  // نمط شهادات Quality Compliance:
-  // "Calibration Date: 31/08/2025" أو "Calibration Due Date: 31/08/2027"
-  for (let i=0; i<lines.length; i++) {
+  // نمط Calibry: "Next due Date Performed by" في سطر واحد
+  // يليه: "8/8/2026 09.02.2026 Antibiotic" في سطر واحد
+  for(let i=0;i<lines.length;i++){
     const ln=lines[i].trim();
-    // تاريخ المعايرة في نفس السطر
+    if(/Next\s*due/i.test(ln)&&/Date/i.test(ln)){
+      for(let j=i+1;j<=Math.min(i+5,lines.length-1);j++){
+        const s=lines[j].trim();
+        if(!s||/^(Repeated|Printed|Certificate|Page|Data|Template|Status|Passed)$/i.test(s))continue;
+        const found=[];
+        // M/D/YYYY
+        const usRe=/(\d{1,2})\/(\d{1,2})\/(\d{4})/g;
+        let dm;
+        while((dm=usRe.exec(s))!==null){
+          const mo=+dm[1],d=+dm[2],y=+dm[3];
+          if(y>=2020&&y<=2035&&mo>=1&&mo<=12&&d>=1&&d<=31)
+            found.push({d,mo,y,pos:dm.index});
+        }
+        // DD.MM.YYYY
+        const euRe=/(\d{2})\.(\d{2})\.(\d{4})/g;
+        while((dm=euRe.exec(s))!==null){
+          const d=+dm[1],mo=+dm[2],y=+dm[3];
+          if(y>=2020&&y<=2035&&mo>=1&&mo<=12&&d>=1&&d<=31)
+            found.push({d,mo,y,pos:dm.index});
+        }
+        if(found.length>=2){
+          found.sort((a,b)=>a.pos-b.pos);
+          entries.push({...found[0],type:'next',conf:99});
+          entries.push({...found[1],type:'cal', conf:99});
+          break;
+        } else if(found.length===1){
+          entries.push({...found[0],type:'next',conf:95});
+        }
+      }
+      break;
+    }
+
+    // نمط "Next due" في سطر وحده
+    if(/^Next\s*due$/i.test(ln)){
+      const found=[];
+      for(let j=i+1;j<=Math.min(i+8,lines.length-1);j++){
+        const s=lines[j].trim();
+        if(/^(Date|Performed\s*by|Repeated|Printed|Certificate|Page|Data|Template|Status)$/i.test(s))continue;
+        const usD=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        const euD=s.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+        if(usD){const mo=+usD[1],d=+usD[2],y=+usD[3];if(y>=2020&&y<=2035)found.push({d,mo,y});}
+        else if(euD){const d=+euD[1],mo=+euD[2],y=+euD[3];if(y>=2020&&y<=2035)found.push({d,mo,y});}
+        if(found.length>=2)break;
+      }
+      if(found.length>=1)entries.push({...found[0],type:'next',conf:99});
+      if(found.length>=2)entries.push({...found[1],type:'cal', conf:99});
+      break;
+    }
+  }
+
+  // نمط شهادات Quality Compliance: "Calibration Date: DD/MM/YYYY"
+  for(let i=0;i<lines.length;i++){
+    const ln=lines[i].trim();
     const calInLine=ln.match(/(?:Calibration\s*Date|Date\s*Calibrated|Calibrated\s*(?:On|Date)|Date\s*of\s*Calibration)[:\s]+(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{4})/i);
     if(calInLine){
       const p=calInLine[1].split(/[\/\.\-]/);
-      if(+p[2]>2000) dateEntries.push({d:+p[0],mo:+p[1],y:+p[2],type:'cal',conf:98});
+      if(+p[2]>2000)entries.push({d:+p[0],mo:+p[1],y:+p[2],type:'cal',conf:98});
     }
-    // تاريخ القادمة في نفس السطر
-    const nextInLine=ln.match(/(?:Next\s*(?:Calibration\s*)?(?:Date|Due)|(?:Calibration\s*)?Due\s*Date|Recommended\s*Due\s*Date)[:\s]+(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{4})/i);
-    if(nextInLine){
-      const p=nextInLine[1].split(/[\/\.\-]/);
-      if(+p[2]>2000) dateEntries.push({d:+p[0],mo:+p[1],y:+p[2],type:'next',conf:98});
+    const nxtInLine=ln.match(/(?:Next\s*(?:Calibration\s*)?(?:Date|Due)|(?:Calibration\s*)?Due\s*Date|Recommended\s*Due\s*Date)[:\s]+(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{4})/i);
+    if(nxtInLine){
+      const p=nxtInLine[1].split(/[\/\.\-]/);
+      if(+p[2]>2000)entries.push({d:+p[0],mo:+p[1],y:+p[2],type:'next',conf:98});
     }
-    // التسمية في سطر والتاريخ في السطر التالي
-    if(calKeywords.test(ln)&&!calInLine){
+    // التسمية في سطر والتاريخ في التالي
+    if(calKW.test(ln)&&!calInLine){
       for(let k=1;k<=2;k++){
         const nxt=lines[i+k]?.trim();
-        if(!nxt) continue;
+        if(!nxt)continue;
         const dm=nxt.match(/^(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})$/);
-        if(dm&&+dm[3]>=2020&&+dm[3]<=2035){
-          dateEntries.push({d:+dm[1],mo:+dm[2],y:+dm[3],type:'cal',conf:95});break;
-        }
+        if(dm&&+dm[3]>=2020&&+dm[3]<=2035){entries.push({d:+dm[1],mo:+dm[2],y:+dm[3],type:'cal',conf:95});break;}
       }
     }
-    if(nextKeywords.test(ln)&&!nextInLine){
+    if(nxtKW.test(ln)&&!nxtInLine){
       for(let k=1;k<=2;k++){
         const nxt=lines[i+k]?.trim();
-        if(!nxt) continue;
+        if(!nxt)continue;
         const dm=nxt.match(/^(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})$/);
-        if(dm&&+dm[3]>=2020&&+dm[3]<=2035){
-          dateEntries.push({d:+dm[1],mo:+dm[2],y:+dm[3],type:'next',conf:95});break;
-        }
+        if(dm&&+dm[3]>=2020&&+dm[3]<=2035){entries.push({d:+dm[1],mo:+dm[2],y:+dm[3],type:'next',conf:95});break;}
       }
     }
   }
@@ -323,27 +319,27 @@ function smartParse(lines) {
   let m;
   while((m=dateRe.exec(full))!==null){
     const d=+m[1],mo=+m[2],y=+m[3];
-    if(y<2020||y>2035||mo<1||mo>12||d<1||d>31) continue;
+    if(y<2020||y>2035||mo<1||mo>12||d<1||d>31)continue;
     const before=full.substring(Math.max(0,m.index-150),m.index);
     const after=full.substring(m.index,Math.min(full.length,m.index+150));
     let type='unknown',conf=50;
-    if(calKeywords.test(before+after)){type='cal';conf=88;}
-    if(nextKeywords.test(before+after)){type='next';conf=88;}
-    dateEntries.push({d,mo,y,type,conf});
+    if(calKW.test(before+after)){type='cal';conf=88;}
+    if(nxtKW.test(before+after)){type='next';conf=88;}
+    entries.push({d,mo,y,type,conf});
   }
 
-  const calDates =dateEntries.filter(e=>e.type==='cal').sort((a,b)=>b.conf-a.conf);
-  const nextDates=dateEntries.filter(e=>e.type==='next').sort((a,b)=>b.conf-a.conf);
-  const unknown2 =dateEntries.filter(e=>e.type==='unknown').sort((a,b)=>a.y*10000+a.mo*100+a.d-(b.y*10000+b.mo*100+b.d));
+  const calDates =entries.filter(e=>e.type==='cal').sort((a,b)=>b.conf-a.conf);
+  const nxtDates =entries.filter(e=>e.type==='next').sort((a,b)=>b.conf-a.conf);
+  const unknown  =entries.filter(e=>e.type==='unknown').sort((a,b)=>a.y*10000+a.mo*100+a.d-(b.y*10000+b.mo*100+b.d));
 
-  data.calibration_date      = calDates[0]
-    ? toISO(calDates[0].d,calDates[0].mo,calDates[0].y)
-    : (unknown2[0]?toISO(unknown2[0].d,unknown2[0].mo,unknown2[0].y):null);
-  data.next_calibration_date = nextDates[0]
-    ? toISO(nextDates[0].d,nextDates[0].mo,nextDates[0].y)
-    : (unknown2.length>1?toISO(unknown2[unknown2.length-1].d,unknown2[unknown2.length-1].mo,unknown2[unknown2.length-1].y):null);
+  data.calibration_date=calDates[0]
+    ?toISO(calDates[0].d,calDates[0].mo,calDates[0].y)
+    :(unknown[0]?toISO(unknown[0].d,unknown[0].mo,unknown[0].y):null);
+  data.next_calibration_date=nxtDates[0]
+    ?toISO(nxtDates[0].d,nxtDates[0].mo,nxtDates[0].y)
+    :(unknown.length>1?toISO(unknown[unknown.length-1].d,unknown[unknown.length-1].mo,unknown[unknown.length-1].y):null);
 
-  // ── جهة الاعتماد ──
+  // ── 5. جهة الاعتماد ────────────────────────
   for(let i=0;i<lines.length;i++){
     if(/^(Customer\s*Name|Company\s*Name|Client\s*Name)$/i.test(lines[i])){
       const prev=lines[i-1]?.trim(),next=lines[i+1]?.trim();
@@ -357,9 +353,12 @@ function smartParse(lines) {
   return data;
 }
 
-// ══ تحديد القسم ══════════════════════════════
-function getDeptFromCode(code) {
-  if(!code) return null;
+// ══ مساعدات ════════════════════════════════════
+function toISO(d,mo,y){return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;}
+function setProgress(pct,msg){document.getElementById('prog').style.width=pct+'%';document.getElementById('prog-msg').textContent=msg;}
+
+function getDeptFromCode(code){
+  if(!code)return null;
   for(const [key,slug] of Object.entries(CODE_DEPT)){
     if(new RegExp('[-\\/\\s]'+key+'[-\\/\\s\\d]|[-\\/\\s]'+key+'$|^'+key+'[-\\/\\s]','i').test(code))
       return {key,slug,name:CODE_NAME[key]};
@@ -367,12 +366,19 @@ function getDeptFromCode(code) {
   return null;
 }
 
-// ══ ملء نموذج المراجعة ═══════════════════════
-function fillReviewForm(data) {
+function onQcodeChange(){
+  const code=document.getElementById('r-qcode').value.toUpperCase();
+  const el=document.getElementById('r-dept-label');
+  const dept=getDeptFromCode(code);
+  el.textContent=dept?('→ '+dept.name):'';
+}
+
+// ══ ملء نموذج المراجعة ═════════════════════════
+function fillReviewForm(data){
   const setVal=(id,val)=>{
-    if(!val) return;
+    if(!val)return;
     const el=document.getElementById(id);
-    el.value=val; el.classList.add('auto');
+    el.value=val;el.classList.add('auto');
   };
   setVal('r-name',   data.device_name);
   setVal('r-serial', data.serial_number);
@@ -380,63 +386,71 @@ function fillReviewForm(data) {
   setVal('r-caldate',data.calibration_date);
   setVal('r-nextdate',data.next_calibration_date);
 
-  // مطابقة الجهاز
   const serial=(data.serial_number||'').toLowerCase();
   const qcode=(data.quality_code||'').toLowerCase();
   let matched=null;
-  if(serial) matched=allDevices.find(d=>d.serial_number?.toLowerCase()===serial);
-  if(!matched&&qcode) matched=allDevices.find(d=>d.quality_code?.toLowerCase()===qcode);
+  if(serial)matched=allDevices.find(d=>d.serial_number?.toLowerCase()===serial);
+  if(!matched&&qcode)matched=allDevices.find(d=>d.quality_code?.toLowerCase()===qcode);
 
   const sel=document.getElementById('r-device');
   const lbl=document.getElementById('r-match-label');
   if(matched){
     sel.value=matched.id;
-    lbl.innerHTML=`<span style="color:#166534;background:#dcfce7;padding:2px 8px;border-radius:12px">✅ تطابق تلقائي: ${matched.name}</span>`;
+    lbl.innerHTML=`<span style="color:#166534;background:#dcfce7;padding:2px 8px;border-radius:12px">✅ ${matched.name}</span>`;
   } else {
     sel.value='NEW';
-    lbl.innerHTML=`<span style="color:#1d4ed8;background:#eff6ff;padding:2px 8px;border-radius:12px">➕ سيُنشأ جهاز جديد</span>`;
+    lbl.innerHTML=`<span style="color:#1d4ed8;background:#eff6ff;padding:2px 8px;border-radius:12px">➕ جهاز جديد</span>`;
   }
   onQcodeChange();
 }
 
-function onQcodeChange() {
-  const code=document.getElementById('r-qcode').value.toUpperCase();
-  const el=document.getElementById('r-dept-label');
-  const dept=getDeptFromCode(code);
-  el.textContent=dept?('→ '+dept.name):'';
+// ══ فتح الإدخال اليدوي ═════════════════════════
+function openManualEdit(){
+  parsedData={device_name:null,serial_number:null,quality_code:null,
+              calibration_date:null,next_calibration_date:null,lab_name:null};
+  ['r-name','r-serial','r-qcode','r-caldate','r-nextdate'].forEach(id=>{
+    const el=document.getElementById(id);el.value='';el.classList.remove('auto');
+  });
+  document.getElementById('r-device').value='';
+  document.getElementById('r-match-label').innerHTML=`<span style="color:#854d0e;background:#fef9c3;padding:2px 8px;border-radius:12px">✏️ إدخال يدوي</span>`;
+  document.getElementById('r-dept-label').textContent='';
+  document.getElementById('step-review').style.display='block';
+  document.getElementById('result-box').style.display='none';
+  document.getElementById('progress-box').style.display='none';
+  document.getElementById('step-review').scrollIntoView({behavior:'smooth'});
 }
 
-// ══ الحفظ من نموذج المراجعة ══════════════════
-async function saveFromReview() {
-  const cal =document.getElementById('r-caldate').value;
+// ══ الحفظ من المراجعة ══════════════════════════
+async function saveFromReview(){
+  const cal=document.getElementById('r-caldate').value;
   const next=document.getElementById('r-nextdate').value;
-  const sel =document.getElementById('r-device').value;
+  const sel=document.getElementById('r-device').value;
   if(!cal||!next){alert('يرجى إدخال تاريخَي المعايرة');return;}
   if(!sel){alert('يرجى اختيار الجهاز أو إنشاء جديد');return;}
 
   parsedData={
-    device_name:           document.getElementById('r-name').value.trim()||null,
-    serial_number:         document.getElementById('r-serial').value.trim()||null,
-    quality_code:          document.getElementById('r-qcode').value.trim()||null,
-    calibration_date:      cal,
-    next_calibration_date: next,
-    lab_name:              parsedData?.lab_name||null,
+    device_name:  document.getElementById('r-name').value.trim()||null,
+    serial_number:document.getElementById('r-serial').value.trim()||null,
+    quality_code: document.getElementById('r-qcode').value.trim()||null,
+    calibration_date:cal,
+    next_calibration_date:next,
+    lab_name:parsedData?.lab_name||null,
   };
 
   document.getElementById('step-review').style.display='none';
   document.getElementById('progress-box').style.display='block';
   setProgress(50,'جاري الحفظ...');
-  await saveDirectly(sel, sel==='NEW');
+  await saveDirectly(sel,sel==='NEW');
 }
 
-// ══ الحفظ المباشر ════════════════════════════
-async function saveDirectly(deviceId, isNewDevice) {
+// ══ الحفظ المباشر ══════════════════════════════
+async function saveDirectly(deviceId,isNew){
   const data=parsedData;
   setProgress(75,'جاري رفع الشهادة...');
 
   let certUrl=null;
   if(uploadedFile){
-    const folder=isNewDevice?'new-'+Date.now():deviceId;
+    const folder=isNew?'new-'+Date.now():deviceId;
     const path=`${folder}/${Date.now()}.pdf`;
     const {error}=await db.storage.from('certificates').upload(path,uploadedFile,{upsert:true});
     if(!error){
@@ -446,56 +460,55 @@ async function saveDirectly(deviceId, isNewDevice) {
   }
 
   setProgress(90,'جاري حفظ البيانات...');
-
-  const calDate =data.calibration_date      ||null;
-  const nextDate=data.next_calibration_date ||null;
-  const name    =data.device_name           ||'غير محدد';
-  const serial  =data.serial_number         ||null;
-  const qcode   =data.quality_code          ||null;
-  const lab     =data.lab_name              ||null;
+  const calDate=data.calibration_date||null;
+  const nextDate=data.next_calibration_date||null;
+  const name=data.device_name||'غير محدد';
+  const serial=data.serial_number||null;
+  const qcode=data.quality_code||null;
+  const lab=data.lab_name||null;
   let finalId=deviceId;
 
-  if(isNewDevice){
+  if(isNew){
     let deptId=null;
     const dept=getDeptFromCode(qcode);
     if(dept){const d=allDepts.find(x=>x.slug===dept.slug);if(d)deptId=d.id;}
-    const {data:inserted,error}=await db.from('devices').insert([{
-      name, serial_number:serial||'SN-'+Date.now(), quality_code:qcode||'',
-      department_id:deptId, calibration_date:calDate, next_calibration_date:nextDate,
-      certificate_url:certUrl, qr_data:JSON.stringify({name,serial,code:qcode}),
+    const {data:ins,error}=await db.from('devices').insert([{
+      name,serial_number:serial||'SN-'+Date.now(),quality_code:qcode||'',
+      department_id:deptId,calibration_date:calDate,next_calibration_date:nextDate,
+      certificate_url:certUrl,qr_data:JSON.stringify({name,serial,code:qcode}),
     }]).select();
-    if(error) return showError('فشل إنشاء الجهاز: '+error.message);
-    finalId=inserted?.[0]?.id;
+    if(error)return showError('فشل إنشاء الجهاز: '+error.message);
+    finalId=ins?.[0]?.id;
   } else {
-    const updateObj={calibration_date:calDate,next_calibration_date:nextDate};
-    if(serial) updateObj.serial_number=serial;
-    if(qcode)  updateObj.quality_code=qcode;
-    if(name!=='غير محدد') updateObj.name=name;
-    if(certUrl) updateObj.certificate_url=certUrl;
+    const upd={calibration_date:calDate,next_calibration_date:nextDate};
+    if(serial)upd.serial_number=serial;
+    if(qcode)upd.quality_code=qcode;
+    if(name!=='غير محدد')upd.name=name;
+    if(certUrl)upd.certificate_url=certUrl;
     const dept=getDeptFromCode(qcode);
-    if(dept){const d=allDepts.find(x=>x.slug===dept.slug);if(d)updateObj.department_id=d.id;}
-    const {error}=await db.from('devices').update(updateObj).eq('id',deviceId);
-    if(error) return showError('فشل التحديث: '+error.message);
+    if(dept){const d=allDepts.find(x=>x.slug===dept.slug);if(d)upd.department_id=d.id;}
+    const {error}=await db.from('devices').update(upd).eq('id',deviceId);
+    if(error)return showError('فشل التحديث: '+error.message);
   }
 
   await db.from('calibration_logs').insert([{
-    device_id:finalId, calibration_date:calDate, next_calibration_date:nextDate,
-    certificate_url:certUrl, notes:lab?`جهة المعايرة: ${lab}`:null,
+    device_id:finalId,calibration_date:calDate,next_calibration_date:nextDate,
+    certificate_url:certUrl,notes:lab?`جهة المعايرة: ${lab}`:null,
   }]);
 
   setProgress(100,'✅ تم الحفظ');
-  showSuccess(finalId, isNewDevice);
+  showSuccess(finalId,isNew);
 }
 
-// ══ معالجة الملف ══════════════════════════════
+// ══ معالجة الملف ════════════════════════════════
 function handleDrop(e){
   e.preventDefault();e.currentTarget.classList.remove('drag');
   const f=e.dataTransfer.files[0];
-  if(f?.type==='application/pdf') handleFile(f);
+  if(f?.type==='application/pdf')handleFile(f);
   else alert('يرجى رفع PDF فقط');
 }
 
-async function handleFile(file) {
+async function handleFile(file){
   uploadedFile=file;
   document.getElementById('upload-area').classList.add('has-file');
   document.getElementById('up-icon').textContent='✅';
@@ -507,15 +520,14 @@ async function handleFile(file) {
 
   setProgress(10,'جاري قراءة الملف...');
   const lines=await extractText(file);
-  const fullText=lines.join(' ');
-  const hasText=fullText.replace(/---PAGE---/g,'').trim().length>50;
+  const hasText=lines.join(' ').replace(/---PAGE---/g,'').trim().length>50;
 
   if(!hasText){
-    setProgress(100,'الملف يحتوي صور فقط — يرجى الإدخال اليدوي');
+    setProgress(100,'PDF صورة — يرجى الإدخال اليدوي');
     setTimeout(()=>{
       document.getElementById('progress-box').style.display='none';
-      // أظهر نموذج المراجعة فارغاً
-      parsedData={device_name:null,serial_number:null,quality_code:null,calibration_date:null,next_calibration_date:null,lab_name:null};
+      parsedData={device_name:null,serial_number:null,quality_code:null,
+                  calibration_date:null,next_calibration_date:null,lab_name:null};
       document.getElementById('r-device').value='NEW';
       document.getElementById('r-match-label').innerHTML=`<span style="color:#854d0e;background:#fef9c3;padding:2px 8px;border-radius:12px">⚠️ PDF صورة — أدخل البيانات يدوياً</span>`;
       document.getElementById('step-review').style.display='block';
@@ -537,8 +549,8 @@ async function handleFile(file) {
   },300);
 }
 
-// ══ عرض النتيجة ══════════════════════════════
-function showSuccess(deviceId, isNew) {
+// ══ النتيجة ════════════════════════════════════
+function showSuccess(deviceId,isNew){
   document.getElementById('progress-box').style.display='none';
   document.getElementById('result-box').innerHTML=`
     <div class="step-box">
@@ -551,17 +563,13 @@ function showSuccess(deviceId, isNew) {
       </div>
       <div style="background:#f8fafc;border-radius:8px;padding:14px;font-size:13px;margin-bottom:14px">
         ${[
-          ['اسم الجهاز',       parsedData.device_name||'غير محدد'],
-          ['الرقم التسلسلي',   parsedData.serial_number||'—'],
-          ['كود الجودة',        parsedData.quality_code||'—'],
-          ['تاريخ المعايرة',    parsedData.calibration_date?new Date(parsedData.calibration_date).toLocaleDateString('ar-SA'):'غير محدد'],
-          ['المعايرة القادمة',  parsedData.next_calibration_date?new Date(parsedData.next_calibration_date).toLocaleDateString('ar-SA'):'غير محدد'],
-          ['القسم',             (()=>{const d=getDeptFromCode(parsedData.quality_code);return d?d.name:'—';})()],
-        ].map(([k,v])=>`
-          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9">
-            <span style="color:#64748b">${k}</span>
-            <span style="font-weight:600">${v}</span>
-          </div>`).join('')}
+          ['اسم الجهاز',     parsedData.device_name||'غير محدد'],
+          ['الرقم التسلسلي', parsedData.serial_number||'—'],
+          ['كود الجودة',     parsedData.quality_code||'—'],
+          ['تاريخ المعايرة', parsedData.calibration_date?new Date(parsedData.calibration_date).toLocaleDateString('ar-SA'):'غير محدد'],
+          ['المعايرة القادمة',parsedData.next_calibration_date?new Date(parsedData.next_calibration_date).toLocaleDateString('ar-SA'):'غير محدد'],
+          ['القسم',          (()=>{const d=getDeptFromCode(parsedData.quality_code);return d?d.name:'—';})()],
+        ].map(([k,v])=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9"><span style="color:#64748b">${k}</span><span style="font-weight:600">${v}</span></div>`).join('')}
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn-secondary" onclick="resetAll()">📄 رفع شهادة أخرى</button>
@@ -580,9 +588,6 @@ function showError(msg){
     </div>`;
   document.getElementById('result-box').style.display='block';
 }
-
-function toISO(d,mo,y){return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;}
-function setProgress(pct,msg){document.getElementById('prog').style.width=pct+'%';document.getElementById('prog-msg').textContent=msg;}
 
 function resetAll(){
   uploadedFile=null;parsedData=null;
