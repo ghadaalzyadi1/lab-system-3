@@ -3,167 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>منصة إدارة أجهزة المختبر</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="style.css">
+<title>منصة إدارة أجهزة المختبر والمعايرة</title>
+<meta name="description" content="منصة متكاملة لإدارة أجهزة المختبر ومتابعة المعايرة">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔬</text></svg>">
+<link rel="stylesheet" href="styles.css">
+<!-- libs -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<!-- QR generator مضمّن محلياً ليعمل بدون إنترنت -->
+<script src="qrcode.lib.js"></script>
 </head>
 <body>
+  <div id="app"></div>
+  <div id="modal-root"></div>
+  <div id="toast" class="toast"></div>
 
-<header class="header">
-  <div class="header-content">
-    <div>
-      <h1>🔬 منصة إدارة أجهزة المختبر</h1>
-      <p class="header-sub">نظام متكامل للمراقبة والمعايرة</p>
-    </div>
-    <div style="display:flex;gap:10px;align-items:center">
-      <a href="pdf-reader.html" class="btn-secondary">📄 رفع شهادة PDF</a>
-      <a href="add-device.html" class="btn-primary">+ إضافة جهاز</a>
-    </div>
-  </div>
-</header>
-
-<!-- شريط البحث -->
-<div style="background:#1e3a5f;padding:0 24px 16px">
-  <div style="max-width:1200px;margin:0 auto">
-    <div style="position:relative">
-      <input id="search-input" type="text" placeholder="🔍 ابحث باسم الجهاز، الرقم التسلسلي، كود الجودة..."
-        style="width:100%;padding:12px 16px;border-radius:10px;border:none;font-size:14px;direction:rtl;font-family:inherit;outline:none"
-        oninput="handleSearch()">
-      <div id="search-results" style="display:none;position:absolute;top:100%;right:0;left:0;background:white;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:100;max-height:300px;overflow-y:auto;margin-top:4px"></div>
-    </div>
-  </div>
-</div>
-
-<main class="container">
-
-  <!-- التنبيهات -->
-  <div id="alerts-box" style="display:none;margin-bottom:24px">
-    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px">
-      <h3 style="color:#991b1b;font-size:14px;margin-bottom:10px">⚠️ أجهزة تحتاج انتباهاً</h3>
-      <div id="alerts-list"></div>
-    </div>
-  </div>
-
-  <!-- الإحصائيات -->
-  <div class="stats-grid" style="margin-bottom:28px">
-    <div class="stat-card blue"><p class="stat-label">إجمالي الأجهزة</p><p class="stat-num" id="s-total">—</p></div>
-    <div class="stat-card green"><p class="stat-label">معايرة سارية</p><p class="stat-num" id="s-valid">—</p></div>
-    <div class="stat-card yellow"><p class="stat-label">تنتهي قريباً</p><p class="stat-num" id="s-soon">—</p></div>
-    <div class="stat-card red"><p class="stat-label">منتهية الصلاحية</p><p class="stat-num" id="s-expired">—</p></div>
-  </div>
-
-  <!-- فلتر الحالة -->
-  <div class="filters" style="margin-bottom:24px">
-    <button class="filter-btn active" onclick="filterDashboard('all',this)">الكل</button>
-    <button class="filter-btn" onclick="filterDashboard('valid',this)">✅ سارية</button>
-    <button class="filter-btn" onclick="filterDashboard('expiring_soon',this)">⚠️ تنتهي قريباً</button>
-    <button class="filter-btn" onclick="filterDashboard('expired',this)">❌ منتهية</button>
-  </div>
-
-  <!-- الأقسام -->
-  <h2 class="section-title">الأقسام</h2>
-  <div class="dept-grid" id="dept-grid">
-    <div class="loading">جاري التحميل...</div>
-  </div>
-
-</main>
-
-<script src="config.js"></script>
-<script>
-const { createClient } = supabase;
-const db = createClient(SUPABASE_URL, SUPABASE_KEY);
-
-const deptColors = ['#6366f1','#0891b2','#16a34a','#dc2626','#9333ea'];
-const deptIcons  = ['☠️','💊','🌿','🧪','🍽️'];
-
-let allDevices = [];
-let allDepts   = [];
-
-async function loadDashboard() {
-  const { data: devs }  = await db.from('devices').select('*');
-  const { data: depts } = await db.from('departments').select('*');
-  allDevices = devs  || [];
-  allDepts   = depts || [];
-
-  updateStats(allDevices);
-  showAlerts(allDevices);
-  renderDepts(allDepts, allDevices);
-}
-
-function updateStats(devs) {
-  document.getElementById('s-total').textContent   = devs.length;
-  document.getElementById('s-valid').textContent   = devs.filter(d=>d.calibration_status==='valid').length;
-  document.getElementById('s-soon').textContent    = devs.filter(d=>d.calibration_status==='expiring_soon').length;
-  document.getElementById('s-expired').textContent = devs.filter(d=>d.calibration_status==='expired').length;
-}
-
-function showAlerts(devs) {
-  const urgent = devs.filter(d => d.calibration_status !== 'valid');
-  if (!urgent.length) return;
-  document.getElementById('alerts-box').style.display = 'block';
-  document.getElementById('alerts-list').innerHTML = urgent.map(d => `
-    <a href="device.html?id=${d.id}" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:white;border-radius:8px;margin-bottom:6px;text-decoration:none;color:inherit;font-size:13px">
-      <span>${d.calibration_status==='expired'?'❌':'⚠️'} <strong>${d.name}</strong> — ${d.quality_code||''}</span>
-      <span style="color:#64748b">${d.next_calibration_date||''}</span>
-    </a>`).join('');
-}
-
-function renderDepts(depts, devs) {
-  document.getElementById('dept-grid').innerHTML = depts.map((dept, i) => {
-    const count   = devs.filter(d=>d.department_id===dept.id).length;
-    const expired = devs.filter(d=>d.department_id===dept.id && d.calibration_status==='expired').length;
-    const soon    = devs.filter(d=>d.department_id===dept.id && d.calibration_status==='expiring_soon').length;
-    return `
-      <a href="department.html?slug=${dept.slug}" class="dept-card" style="border-top:4px solid ${deptColors[i]}">
-        <span class="dept-icon">${deptIcons[i]}</span>
-        <p class="dept-name">${dept.name_ar}</p>
-        <p style="font-size:12px;color:#64748b;margin-top:4px">${count} جهاز</p>
-        ${expired ? `<span class="badge badge-expired" style="margin-top:6px;display:inline-block">❌ ${expired} منتهية</span>` : ''}
-        ${soon    ? `<span class="badge badge-soon"    style="margin-top:6px;display:inline-block">⚠️ ${soon} قريبة</span>`   : ''}
-      </a>`;
-  }).join('');
-}
-
-function filterDashboard(status, btn) {
-  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  const filtered = status==='all' ? allDepts : allDepts.filter(dept =>
-    allDevices.some(d=>d.department_id===dept.id && d.calibration_status===status));
-  renderDepts(filtered, allDevices);
-}
-
-// البحث
-async function handleSearch() {
-  const q = document.getElementById('search-input').value.trim().toLowerCase();
-  const box = document.getElementById('search-results');
-  if (q.length < 2) { box.style.display='none'; return; }
-
-  const results = allDevices.filter(d =>
-    d.name?.toLowerCase().includes(q) ||
-    d.serial_number?.toLowerCase().includes(q) ||
-    d.quality_code?.toLowerCase().includes(q)
-  );
-
-  if (!results.length) { box.innerHTML='<p style="padding:12px;color:#94a3b8;font-size:13px">لا توجد نتائج</p>'; box.style.display='block'; return; }
-
-  const statusMap = { valid:'✅', expiring_soon:'⚠️', expired:'❌' };
-  box.innerHTML = results.slice(0,8).map(d=>`
-    <a href="device.html?id=${d.id}" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid #f1f5f9;text-decoration:none;color:inherit">
-      <div>
-        <p style="font-size:13px;font-weight:600;color:#1e293b">${d.name}</p>
-        <p style="font-size:11px;color:#64748b">${d.serial_number} • ${d.quality_code||''}</p>
-      </div>
-      <span>${statusMap[d.calibration_status]||''}</span>
-    </a>`).join('');
-  box.style.display = 'block';
-}
-
-document.addEventListener('click', e => {
-  if (!e.target.closest('#search-input') && !e.target.closest('#search-results'))
-    document.getElementById('search-results').style.display = 'none';
-});
-
-loadDashboard();
-</script>
+  <script src="seed-data.js"></script>
+  <script src="db.js"></script>
+  <script src="auth.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
