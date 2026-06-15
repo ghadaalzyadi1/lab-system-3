@@ -80,7 +80,25 @@ function router(){
   layout(() => `<div class="empty"><div class="e-ico">🤷</div><h3>الصفحة غير موجودة</h3></div>`);
 }
 window.addEventListener('hashchange', router);
-window.addEventListener('load', router);
+
+// انتظر تحميل البيانات من Supabase قبل أول عرض
+async function boot(){
+  $('#app').innerHTML = `<div class="login-wrap"><div style="color:#fff;text-align:center">
+    <div style="font-size:46px">🔬</div><p style="margin-top:12px;font-size:16px">جارٍ الاتصال بقاعدة البيانات...</p></div></div>`;
+  try {
+    await DB.ready;
+    router();
+  } catch (e) {
+    console.error(e);
+    $('#app').innerHTML = `<div class="login-wrap"><div class="login-card" style="text-align:center">
+      <div class="lc-logo">⚠️</div><h1>تعذّر الاتصال بقاعدة البيانات</h1>
+      <p class="sub">تأكدي من تشغيل ملف supabase-schema.sql في Supabase ومن صحة بيانات config.js، ثم حدّثي الصفحة.</p>
+      <p class="muted" style="font-size:12px;direction:ltr;background:#f8fafc;padding:10px;border-radius:8px">${esc(e.message||e)}</p>
+      <button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="location.reload()">إعادة المحاولة</button>
+    </div></div>`;
+  }
+}
+window.addEventListener('load', boot);
 
 /* ============================================================
    Layout shell (sidebar + topbar)
@@ -1003,9 +1021,10 @@ function viewSettings(){
       DB.saveSettings({ labName:$('#s-lab').value.trim(), soonDays:Math.max(1,+$('#s-days').value||60), baseUrl:$('#s-baseurl').value.trim() });
       toast('تم حفظ الإعدادات','ok'); router();
     };
-    $('#set-reset').onclick = () => {
-      if (confirm('سيؤدي هذا إلى استعادة البيانات الأصلية من ملف المختبر وحذف تعديلاتك. متابعة؟')){
-        DB.resetAll(); toast('تمت الاستعادة','ok'); go('/');
+    $('#set-reset').onclick = async () => {
+      if (confirm('سيعيد هذا تحميل الأجهزة الأصلية الـ72 إلى السحابة (لن يحذف الأجهزة التي أضفتِها). متابعة؟')){
+        try { await DB.resetAll(); toast('تمت الاستعادة','ok'); go('/'); }
+        catch(e){ toast('تعذّرت الاستعادة','err'); }
       }
     };
   },0);
@@ -1026,7 +1045,7 @@ function viewSettings(){
       </div>
       <hr style="margin:24px 0;border:none;border-top:1px solid var(--border)">
       <h3 style="margin-bottom:8px">منطقة الخطر</h3>
-      <p class="muted" style="font-size:13px;margin-bottom:12px">استعادة البيانات الأصلية من ملف المختبر (يحذف كل التعديلات والأجهزة المضافة).</p>
+      <p class="muted" style="font-size:13px;margin-bottom:12px">إعادة تحميل الأجهزة الأصلية الـ72 إلى السحابة (لن يحذف الأجهزة التي أضفتِها).</p>
       <button class="btn btn-danger" id="set-reset">♻️ استعادة البيانات الأصلية</button>
     </div></div>`;
 }

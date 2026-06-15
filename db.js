@@ -1,79 +1,119 @@
 /* ============================================================
-   db.js — Data layer
-   Structured data  -> localStorage
-   Certificate files -> IndexedDB (so large PDFs/images don't
-   blow the localStorage quota)
+   db.js — Supabase-backed data layer
+   ------------------------------------------------------------
+   Strategy: load everything from Supabase once into an in-memory
+   cache at startup, so the rest of the app can keep reading data
+   synchronously (DB.devices(), DB.stats(), ...). Mutations update
+   the cache immediately (optimistic) and write to Supabase in the
+   background. Certificates live in Supabase Storage.
+   App-level settings (lab name, alert window, QR base URL) stay
+   in localStorage since they are per-installation preferences.
    ============================================================ */
 const DB = (() => {
-  const LS_KEY = 'labcal:data:v1';
-  const SOON_DAYS = 60;            // "expiring soon" window (days)
+  const SOON_DAYS = 60;
+  const SET_KEY = 'labcal:settings:v1';
+  const BUCKET = 'certificates';
 
-  /* ---------- structured store ---------- */
-  let store = null;
+  let sb = null;                 // supabase client
+  let store = { departments: [], devices: [], settings: {} };
 
-  const SCHEMA = 2;                 // bump when seed classification changes
+  /* ---------- settings (local) ---------- */
+  function loadSettings() {
+    let s = {};
+    try { s = JSON.parse(localStorage.getItem(SET_KEY)) || {}; } catch {}
+    store.settings = Object.assign({ soonDays: SOON_DAYS, labName: 'مختبر سلامة الغذاء', baseUrl: '' }, s);
+  }
+  function saveSettings(p) { Object.assign(store.settings, p); localStorage.setItem(SET_KEY, JSON.stringify(store.settings)); }
 
-  function load() {
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) { try { store = JSON.parse(raw); } catch { store = null; } }
-    if (!store || !store.devices) seed();
-    else migrate();
-    return store;
+  /* ---------- row <-> object mapping ---------- */
+  const deptToRow = (d) => ({ id: d.id, slug: d.slug, name_en: d.nameEn, name_ar: d.nameAr, icon: d.icon, color: d.color });
+  const rowToDept = (r) => ({ id: r.id, slug: r.slug, nameEn: r.name_en, nameAr: r.name_ar, icon: r.icon, color: r.color });
+  const deviceToRow = (d) => ({
+    id: d.id, department_id: d.departmentId, unit: d.unit || '', category: d.category || 'supporting',
+    old_code: d.oldCode || '', new_code: d.newCode || '', name: d.name || '', manufacturer: d.manufacturer || '',
+    serial: d.serial || '', model: d.model || '', test: d.test || '', cert_number: d.certNumber || '',
+    cal_company: d.calCompany || '', cal_date: d.calDate || '', due_date: d.dueDate || '', remarks: d.remarks || '',
+    condition: d.condition || 'operational', certificate_path: d.certificatePath || null, cert_file: d.certFile || null
+  });
+  const rowToDevice = (r) => ({
+    id: r.id, departmentId: r.department_id, unit: r.unit || '', category: r.category || 'supporting',
+    oldCode: r.old_code || '', newCode: r.new_code || '', name: r.name || '', manufacturer: r.manufacturer || '',
+    serial: r.serial || '', model: r.model || '', test: r.test || '', certNumber: r.cert_number || '',
+    calCompany: r.cal_company || '', calDate: r.cal_date || '', dueDate: r.due_date || '', remarks: r.remarks || '',
+    condition: r.condition || 'operational', certificatePath: r.certificate_path || '', certFile: r.cert_file || '',
+    certificateId: r.certificate_path ? r.id : '', history: []
+  });
+
+  /* ---------- error helper ---------- */
+  function bg(promise, action) {
+    Promise.resolve(promise).then(({ error } = {}) => {
+      if (error) { console.error(action, error); if (window.toast) toast('تعذّر الحفظ في السحابة: ' + (error.message || ''), 'err'); }
+    }).catch(e => { console.error(action, e); if (window.toast) toast('خطأ في الاتصال بالسحابة', 'err'); });
   }
 
-  // Non-destructive migrations for data cached from an older version.
-  function migrate() {
-    const from = store.schema || 1;
-    if (from < 2) {
-      // All workbook devices are auxiliary/supporting equipment.
-      const seedIds = new Set((typeof SEED_DEVICES !== 'undefined' ? SEED_DEVICES : []).map(d => d.id));
-      store.devices.forEach(d => { if (seedIds.has(d.id)) d.category = 'supporting'; });
+  /* ---------- init / load ---------- */
+  async function init() {
+    loadSettings();
+    if (!window.supabase || typeof SUPABASE_URL === 'undefined') {
+      throw new Error('مكتبة Supabase أو ملف config.js غير محمّل');
     }
-    if ((store.schema || 1) !== SCHEMA) { store.schema = SCHEMA; persist(); }
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    await loadAll();
+    if (store.departments.length === 0) { await seed(); await loadAll(); }
   }
-  function persistSeed() { store.schema = SCHEMA; persist(); }
-  function persist() { localStorage.setItem(LS_KEY, JSON.stringify(store)); }
 
-  function seed() {
-    store = {
-      departments: structuredClone(SEED_DEPARTMENTS),
-      devices: structuredClone(SEED_DEVICES).map(d => ({ ...d, history: [
-        { date: today(), text: 'تمت إضافة الجهاز إلى النظام', user: 'system' }
-      ]})),
-      settings: { soonDays: SOON_DAYS, labName: 'مختبر سلامة الغذاء' },
-      seededAt: new Date().toISOString(),
-      schema: SCHEMA
-    };
-    persist();
+  async function loadAll() {
+    const [{ data: depts, error: e1 }, { data: devs, error: e2 }, { data: hist, error: e3 }] = await Promise.all([
+      sb.from('departments').select('*'),
+      sb.from('devices').select('*'),
+      sb.from('device_history').select('*').order('created_at', { ascending: false })
+    ]);
+    if (e1 || e2 || e3) throw (e1 || e2 || e3);
+    store.departments = (depts || []).map(rowToDept);
+    store.devices = (devs || []).map(rowToDevice);
+    const byDev = {};
+    (hist || []).forEach(h => { (byDev[h.device_id] = byDev[h.device_id] || []).push({ date: h.date, text: h.text, user: h.username }); });
+    store.devices.forEach(d => { d.history = byDev[d.id] || []; });
   }
-  function resetAll() { localStorage.removeItem(LS_KEY); store = null; load(); }
+
+  async function seed() {
+    await sb.from('departments').upsert(SEED_DEPARTMENTS.map(deptToRow));
+    await sb.from('devices').upsert(SEED_DEVICES.map(deviceToRow));
+    const hist = SEED_DEVICES.map(d => ({ device_id: d.id, date: today(), text: 'تمت إضافة الجهاز إلى النظام', username: 'system' }));
+    await sb.from('device_history').insert(hist);
+  }
+
+  // إعادة تعبئة البيانات الأصلية في السحابة (upsert لا يحذف الإضافات)
+  async function resetAll() {
+    await sb.from('departments').upsert(SEED_DEPARTMENTS.map(deptToRow));
+    await sb.from('devices').upsert(SEED_DEVICES.map(deviceToRow));
+    await loadAll();
+  }
 
   /* ---------- date helpers ---------- */
   function parseDate(s) {
     if (!s) return null;
-    // dd/mm/yyyy
     const m = String(s).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
-    const d = new Date(s);
-    return isNaN(d) ? null : d;
+    const d = new Date(s); return isNaN(d) ? null : d;
   }
   function today() {
     const d = new Date();
     return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
   }
-  function daysUntil(dateStr) {
-    const d = parseDate(dateStr); if (!d) return null;
+  function daysUntil(s) {
+    const d = parseDate(s); if (!d) return null;
     const t = new Date(); t.setHours(0,0,0,0);
     return Math.round((d - t) / 86400000);
   }
-  function fmtDate(s){ return s || '—'; }
+  const fmtDate = (s) => s || '—';
 
-  /* ---------- calibration status ---------- */
+  /* ---------- status ---------- */
   function status(device) {
     const days = daysUntil(device.dueDate);
     if (days === null) return 'unknown';
     if (days < 0) return 'expired';
-    if (days <= (store.settings?.soonDays ?? SOON_DAYS)) return 'soon';
+    if (days <= (store.settings.soonDays ?? SOON_DAYS)) return 'soon';
     return 'valid';
   }
   const STATUS_LABEL = { valid:'سارية', soon:'تنتهي قريباً', expired:'منتهية', unknown:'غير محددة' };
@@ -82,17 +122,20 @@ const DB = (() => {
   /* ---------- departments ---------- */
   const departments = () => store.departments;
   const department  = (id) => store.departments.find(d => d.id === id || d.slug === id);
-  function addDepartment(dep){
+  function addDepartment(dep) {
     dep.id = dep.id || slugify(dep.nameEn || dep.nameAr);
-    store.departments.push(dep); persist(); return dep;
+    store.departments.push(dep);
+    bg(sb.from('departments').upsert(deptToRow(dep)), 'addDepartment');
+    return dep;
   }
-  function updateDepartment(id, patch){
-    const d = department(id); if(!d) return; Object.assign(d, patch); persist(); return d;
+  function updateDepartment(id, patch) {
+    const d = department(id); if (!d) return; Object.assign(d, patch);
+    bg(sb.from('departments').upsert(deptToRow(d)), 'updateDepartment'); return d;
   }
-  function deleteDepartment(id){
+  function deleteDepartment(id) {
     store.departments = store.departments.filter(d => d.id !== id);
     store.devices = store.devices.filter(d => d.departmentId !== id);
-    persist();
+    bg(sb.from('departments').delete().eq('id', id), 'deleteDepartment');
   }
 
   /* ---------- devices ---------- */
@@ -100,101 +143,80 @@ const DB = (() => {
   const device  = (id) => store.devices.find(d => d.id === id);
   const devicesByDept = (deptId) => store.devices.filter(d => d.departmentId === deptId);
 
-  function addDevice(dev, user='—'){
+  function addDevice(dev, user = '—') {
     dev.id = dev.id || uniqueId(dev.newCode || dev.oldCode || dev.name || 'dev');
-    dev.history = [{ date: today(), text: 'تمت إضافة الجهاز', user }];
     dev.condition = dev.condition || 'operational';
-    store.devices.push(dev); persist(); return dev;
+    dev.history = [{ date: today(), text: 'تمت إضافة الجهاز', user }];
+    store.devices.push(dev);
+    bg(sb.from('devices').upsert(deviceToRow(dev)), 'addDevice');
+    bg(sb.from('device_history').insert({ device_id: dev.id, date: today(), text: 'تمت إضافة الجهاز', username: user }), 'addDevice/history');
+    return dev;
   }
-  function updateDevice(id, patch, user='—', note){
-    const d = device(id); if(!d) return;
-    Object.assign(d, patch);
-    if (note){ d.history = d.history || []; d.history.unshift({ date: today(), text: note, user }); }
-    persist(); return d;
+  function updateDevice(id, patch, user = '—', note) {
+    const d = device(id); if (!d) return; Object.assign(d, patch);
+    bg(sb.from('devices').upsert(deviceToRow(d)), 'updateDevice');
+    if (note) {
+      d.history = d.history || []; d.history.unshift({ date: today(), text: note, user });
+      bg(sb.from('device_history').insert({ device_id: id, date: today(), text: note, username: user }), 'updateDevice/history');
+    }
+    return d;
   }
-  function deleteDevice(id){
-    store.devices = store.devices.filter(d => d.id !== id); persist();
+  function deleteDevice(id) {
+    store.devices = store.devices.filter(d => d.id !== id);
+    bg(sb.from('devices').delete().eq('id', id), 'deleteDevice');
   }
-  function logHistory(id, text, user='—'){
-    const d = device(id); if(!d) return;
-    d.history = d.history || []; d.history.unshift({ date: today(), text, user }); persist();
+  function logHistory(id, text, user = '—') {
+    const d = device(id); if (!d) return;
+    d.history = d.history || []; d.history.unshift({ date: today(), text, user });
+    bg(sb.from('device_history').insert({ device_id: id, date: today(), text, username: user }), 'logHistory');
   }
 
-  /* ---------- aggregate stats ---------- */
-  function stats(list = store.devices){
-    const s = { total:list.length, valid:0, soon:0, expired:0, unknown:0,
-                main:0, supporting:0, operational:0, maintenance:0, out_of_service:0 };
-    list.forEach(d => {
-      s[status(d)]++;
-      s[d.category === 'main' ? 'main' : 'supporting']++;
-      s[d.condition || 'operational']++;
-    });
+  /* ---------- stats ---------- */
+  function stats(list = store.devices) {
+    const s = { total: list.length, valid:0, soon:0, expired:0, unknown:0, main:0, supporting:0, operational:0, maintenance:0, out_of_service:0 };
+    list.forEach(d => { s[status(d)]++; s[d.category === 'main' ? 'main' : 'supporting']++; s[d.condition || 'operational']++; });
     return s;
   }
-  function alerts(){
-    return store.devices
-      .map(d => ({ d, st: status(d), days: daysUntil(d.dueDate) }))
+  function alerts() {
+    return store.devices.map(d => ({ d, st: status(d), days: daysUntil(d.dueDate) }))
       .filter(x => x.st === 'expired' || x.st === 'soon')
-      .sort((a,b) => (a.days ?? 1e9) - (b.days ?? 1e9));
+      .sort((a, b) => (a.days ?? 1e9) - (b.days ?? 1e9));
   }
 
   /* ---------- helpers ---------- */
-  function slugify(s){ return String(s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'item'; }
-  function uniqueId(base){
-    let id = slugify(base), n = 1;
-    const exists = x => store.devices.some(d => d.id === x);
-    let cur = id; while (exists(cur)) { n++; cur = `${id}-${n}`; }
-    return cur;
+  function slugify(s) { return String(s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'item'; }
+  function uniqueId(base) {
+    let id = slugify(base); const exists = x => store.devices.some(d => d.id === x);
+    let cur = id, n = 1; while (exists(cur)) { n++; cur = `${id}-${n}`; } return cur;
   }
 
-  /* ============================================================
-     Certificate files — IndexedDB
-     ============================================================ */
-  const IDB_NAME = 'labcal-certs', IDB_STORE = 'files';
-  let idbPromise = null;
-  function idb(){
-    if (idbPromise) return idbPromise;
-    idbPromise = new Promise((res, rej) => {
-      const r = indexedDB.open(IDB_NAME, 1);
-      r.onupgradeneeded = () => r.result.createObjectStore(IDB_STORE);
-      r.onsuccess = () => res(r.result);
-      r.onerror = () => rej(r.error);
-    });
-    return idbPromise;
+  /* ---------- certificates (Supabase Storage) ---------- */
+  async function saveCertificate(id, blob, filename, type) {
+    const path = `${id}/file`;
+    const { error } = await sb.storage.from(BUCKET).upload(path, blob, { upsert: true, contentType: type || 'application/octet-stream' });
+    if (error) throw error;
+    return path;
   }
-  async function saveCertificate(id, blob, filename, type){
-    const db = await idb();
-    return new Promise((res, rej) => {
-      const tx = db.transaction(IDB_STORE, 'readwrite');
-      tx.objectStore(IDB_STORE).put({ blob, filename, type, savedAt: Date.now() }, id);
-      tx.oncomplete = () => res(id); tx.onerror = () => rej(tx.error);
-    });
+  async function getCertificate(id) {
+    const { data, error } = await sb.storage.from(BUCKET).download(`${id}/file`);
+    if (error || !data) return null;
+    const d = device(id);
+    return { blob: data, filename: (d && d.certFile) || 'certificate', type: data.type };
   }
-  async function getCertificate(id){
-    const db = await idb();
-    return new Promise((res, rej) => {
-      const tx = db.transaction(IDB_STORE, 'readonly');
-      const rq = tx.objectStore(IDB_STORE).get(id);
-      rq.onsuccess = () => res(rq.result || null); rq.onerror = () => rej(rq.error);
-    });
-  }
-  async function deleteCertificate(id){
-    const db = await idb();
-    return new Promise((res) => {
-      const tx = db.transaction(IDB_STORE, 'readwrite');
-      tx.objectStore(IDB_STORE).delete(id); tx.oncomplete = res;
-    });
+  async function deleteCertificate(id) {
+    await sb.storage.from(BUCKET).remove([`${id}/file`]);
   }
 
-  load();
+  /* ---------- expose ---------- */
+  const ready = init();   // promise the app awaits before first render
+
   return {
-    load, persist, resetAll, seedReset: resetAll,
+    ready, resetAll, seedReset: resetAll,
     parseDate, today, daysUntil, fmtDate, status, STATUS_LABEL, COND_LABEL, SOON_DAYS,
     departments, department, addDepartment, updateDepartment, deleteDepartment,
     devices, device, devicesByDept, addDevice, updateDevice, deleteDevice, logHistory,
     stats, alerts, slugify, uniqueId,
     saveCertificate, getCertificate, deleteCertificate,
-    get settings(){ return store.settings; },
-    saveSettings(p){ Object.assign(store.settings, p); persist(); }
+    get settings() { return store.settings; }, saveSettings
   };
 })();
