@@ -1,0 +1,2 @@
+onst SUPABASE_URL = 'https://yppmkraeiatnkysdzczx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlwcG1rcmFlaWF0bmt5c2R6Y3p4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0MjIzMTgsImV4cCI6MjA5Mjk5ODMxOH0.BRqh8qSdr86VZEeB49VZlSa59tOEFigugXtKsLpRbAc';
