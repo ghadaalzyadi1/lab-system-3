@@ -101,6 +101,13 @@ img{max-width:100%}
 .card-body{padding:20px}
 .grid-2{display:grid;grid-template-columns:1.4fr 1fr;gap:22px}
 .grid-3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+/* chart containers — fixed height keeps charts compact */
+.chart-box{position:relative;height:200px}
+.chart-box.md{height:230px}
+.charts-3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.charts-2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:860px){ .charts-3{grid-template-columns:1fr 1fr} }
+@media(max-width:560px){ .charts-3,.charts-2{grid-template-columns:1fr} }
 
 /* ===== Department cards ===== */
 .dept-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px}

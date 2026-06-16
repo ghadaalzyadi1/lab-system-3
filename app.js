@@ -281,29 +281,29 @@ function viewDashboard(){
     </div>
 
     <h2 class="section-title">📊 الرسوم البيانية</h2>
-    <div class="grid-2">
-      <div class="card">
-        <div class="card-head"><h3>📈 توزيع المعايرة حسب القسم</h3></div>
-        <div class="card-body"><canvas id="deptChart" height="150"></canvas></div>
-      </div>
+    <div class="charts-3">
       <div class="card">
         <div class="card-head"><h3>🧮 حالة المعايرة</h3></div>
-        <div class="card-body" style="display:grid;place-items:center"><canvas id="statusChart" height="200"></canvas></div>
+        <div class="card-body"><div class="chart-box"><canvas id="statusChart"></canvas></div></div>
       </div>
-    </div>
-    <div class="grid-2" style="margin-top:22px">
       <div class="card">
         <div class="card-head"><h3>🛠️ حالة التشغيل</h3></div>
-        <div class="card-body" style="display:grid;place-items:center"><canvas id="conditionChart" height="200"></canvas></div>
+        <div class="card-body"><div class="chart-box"><canvas id="conditionChart"></canvas></div></div>
       </div>
       <div class="card">
         <div class="card-head"><h3>🏷️ تصنيف الأجهزة</h3></div>
-        <div class="card-body" style="display:grid;place-items:center"><canvas id="categoryChart" height="200"></canvas></div>
+        <div class="card-body"><div class="chart-box"><canvas id="categoryChart"></canvas></div></div>
       </div>
     </div>
-    <div class="card" style="margin-top:22px">
-      <div class="card-head"><h3>📅 مواعيد المعايرة القادمة (شهرياً)</h3></div>
-      <div class="card-body"><canvas id="dueChart" height="120"></canvas></div>
+    <div class="charts-2" style="margin-top:18px">
+      <div class="card">
+        <div class="card-head"><h3>📈 المعايرة حسب القسم</h3></div>
+        <div class="card-body"><div class="chart-box md"><canvas id="deptChart"></canvas></div></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>📅 مواعيد المعايرة القادمة</h3></div>
+        <div class="card-body"><div class="chart-box md"><canvas id="dueChart"></canvas></div></div>
+      </div>
     </div>
   `;
 }
@@ -326,56 +326,75 @@ function deptCard(dept){
 }
 
 let _charts = {};
+// إعدادات احترافية موحّدة لكل الرسوم
+function chartDefaults(){
+  if (!window.Chart || chartDefaults._done) return; chartDefaults._done = true;
+  Chart.defaults.font.family = '"Segoe UI",Tahoma,sans-serif';
+  Chart.defaults.font.size = 12;
+  Chart.defaults.color = '#64748b';
+  Chart.defaults.maintainAspectRatio = false;
+  const lg = Chart.defaults.plugins.legend.labels;
+  lg.usePointStyle = true; lg.pointStyle = 'circle'; lg.boxWidth = 8; lg.boxHeight = 8; lg.padding = 14;
+  const tt = Chart.defaults.plugins.tooltip;
+  tt.backgroundColor = '#0f172a'; tt.padding = 10; tt.cornerRadius = 8; tt.boxPadding = 6;
+  tt.titleFont = { family:'"Segoe UI",Tahoma', weight:'600' };
+}
+const pctTooltip = { callbacks: { label: (ctx) => {
+  const total = ctx.dataset.data.reduce((a,b)=>a+(b||0),0);
+  const v = ctx.parsed; const p = total ? Math.round(v/total*100) : 0;
+  return `  ${ctx.label}: ${v} (${p}%)`;
+}}};
+
 function drawStatusChart(s){
-  const c = $('#statusChart'); if (!c || !window.Chart) return;
+  const c = $('#statusChart'); if (!c || !window.Chart) return; chartDefaults();
   _charts.status?.destroy();
   _charts.status = new Chart(c, {
     type:'doughnut',
     data:{ labels:['سارية','تنتهي قريباً','منتهية','غير محددة'],
       datasets:[{ data:[s.valid,s.soon,s.expired,s.unknown],
-        backgroundColor:['#16a34a','#d97706','#dc2626','#cbd5e1'], borderWidth:2, borderColor:'#fff' }] },
-    options:{ plugins:{ legend:{ position:'bottom', labels:{ font:{ family:'Tahoma' }, padding:14 } } }, cutout:'62%' }
+        backgroundColor:['#16a34a','#f59e0b','#ef4444','#cbd5e1'], borderWidth:0, hoverOffset:6 }] },
+    options:{ cutout:'70%', plugins:{ legend:{ position:'bottom' }, tooltip:pctTooltip } }
   });
 }
 function drawDeptChart(){
-  const c = $('#deptChart'); if (!c || !window.Chart) return;
+  const c = $('#deptChart'); if (!c || !window.Chart) return; chartDefaults();
   const depts = DB.departments();
   _charts.dept?.destroy();
   _charts.dept = new Chart(c, {
     type:'bar',
     data:{ labels:depts.map(d=>d.nameAr),
       datasets:[
-        { label:'سارية', data:depts.map(d=>DB.stats(DB.devicesByDept(d.id)).valid), backgroundColor:'#16a34a' },
-        { label:'قريبة', data:depts.map(d=>DB.stats(DB.devicesByDept(d.id)).soon),  backgroundColor:'#d97706' },
-        { label:'منتهية',data:depts.map(d=>DB.stats(DB.devicesByDept(d.id)).expired),backgroundColor:'#dc2626' },
+        { label:'سارية', data:depts.map(d=>DB.stats(DB.devicesByDept(d.id)).valid), backgroundColor:'#16a34a', borderRadius:4, maxBarThickness:30 },
+        { label:'قريبة', data:depts.map(d=>DB.stats(DB.devicesByDept(d.id)).soon),  backgroundColor:'#f59e0b', borderRadius:4, maxBarThickness:30 },
+        { label:'منتهية',data:depts.map(d=>DB.stats(DB.devicesByDept(d.id)).expired),backgroundColor:'#ef4444', borderRadius:4, maxBarThickness:30 },
       ]},
-    options:{ responsive:true, scales:{ x:{ stacked:true, ticks:{ font:{ family:'Tahoma' } } }, y:{ stacked:true, beginAtZero:true } },
-      plugins:{ legend:{ position:'bottom', labels:{ font:{ family:'Tahoma' } } } } }
+    options:{ scales:{ x:{ stacked:true, grid:{ display:false } }, y:{ stacked:true, beginAtZero:true, ticks:{ precision:0 }, grid:{ color:'#f1f5f9' }, border:{ display:false } } },
+      plugins:{ legend:{ position:'bottom' } } }
   });
 }
 function drawConditionChart(s){
-  const c = $('#conditionChart'); if (!c || !window.Chart) return;
+  const c = $('#conditionChart'); if (!c || !window.Chart) return; chartDefaults();
   _charts.cond?.destroy();
   _charts.cond = new Chart(c, {
     type:'doughnut',
     data:{ labels:['تعمل','تحت الصيانة','خارج الخدمة'],
       datasets:[{ data:[s.operational,s.maintenance,s.out_of_service],
-        backgroundColor:['#16a34a','#d97706','#dc2626'], borderWidth:2, borderColor:'#fff' }] },
-    options:{ plugins:{ legend:{ position:'bottom', labels:{ font:{ family:'Tahoma' }, padding:14 } } }, cutout:'62%' }
+        backgroundColor:['#16a34a','#f59e0b','#ef4444'], borderWidth:0, hoverOffset:6 }] },
+    options:{ cutout:'70%', plugins:{ legend:{ position:'bottom' }, tooltip:pctTooltip } }
   });
 }
 function drawCategoryChart(s){
-  const c = $('#categoryChart'); if (!c || !window.Chart) return;
+  const c = $('#categoryChart'); if (!c || !window.Chart) return; chartDefaults();
   _charts.cat?.destroy();
   _charts.cat = new Chart(c, {
-    type:'pie',
+    type:'doughnut',
     data:{ labels:['رئيسي','مساند'],
-      datasets:[{ data:[s.main,s.supporting], backgroundColor:['#2563eb','#7c3aed'], borderWidth:2, borderColor:'#fff' }] },
-    options:{ plugins:{ legend:{ position:'bottom', labels:{ font:{ family:'Tahoma' }, padding:14 } } } }
+      datasets:[{ data:[s.main,s.supporting], backgroundColor:['#2563eb','#8b5cf6'], borderWidth:0, hoverOffset:6 }] },
+    options:{ cutout:'70%', plugins:{ legend:{ position:'bottom' }, tooltip:pctTooltip } }
   });
 }
 function drawDueChart(){
-  const c = $('#dueChart'); if (!c || !window.Chart) return;
+  const c = $('#dueChart'); if (!c || !window.Chart) return; chartDefaults();
   const buckets = {};
   DB.devices().forEach(d => {
     const dt = DB.parseDate(d.dueDate); if (!dt) return;
@@ -385,12 +404,12 @@ function drawDueChart(){
   const keys = Object.keys(buckets).sort();
   const labels = keys.map(k => { const [y,m] = k.split('-'); return `${m}/${y}`; });
   const now = new Date(); now.setHours(0,0,0,0);
-  const colors = keys.map(k => { const [y,m] = k.split('-'); return (new Date(+y, +m-1, 28) < now) ? '#dc2626' : '#2563eb'; });
+  const colors = keys.map(k => { const [y,m] = k.split('-'); return (new Date(+y, +m-1, 28) < now) ? '#ef4444' : '#2563eb'; });
   _charts.due?.destroy();
   _charts.due = new Chart(c, {
     type:'bar',
-    data:{ labels, datasets:[{ label:'عدد الأجهزة', data:keys.map(k=>buckets[k]), backgroundColor:colors, borderRadius:6 }] },
-    options:{ responsive:true, scales:{ x:{ ticks:{ font:{ family:'Tahoma' } } }, y:{ beginAtZero:true, ticks:{ precision:0 } } },
+    data:{ labels, datasets:[{ label:'عدد الأجهزة', data:keys.map(k=>buckets[k]), backgroundColor:colors, borderRadius:5, maxBarThickness:34 }] },
+    options:{ scales:{ x:{ grid:{ display:false } }, y:{ beginAtZero:true, ticks:{ precision:0 }, grid:{ color:'#f1f5f9' }, border:{ display:false } } },
       plugins:{ legend:{ display:false } } }
   });
 }
