@@ -309,18 +309,27 @@ function viewDashboard(){
 }
 function pct(a,b){ return b ? Math.round(a/b*100) : 0; }
 
+// لوحة ألوان موحّدة من الأزرق إلى الأخضر تُطبّق على كل الأقسام بالترتيب
+const DEPT_PALETTE = ['#2563eb','#0891b2','#0d9488','#0e9f6e','#16a34a'];
+function deptColor(dept){
+  const i = DB.departments().findIndex(d => d.id === dept.id);
+  return DEPT_PALETTE[(i < 0 ? 0 : i) % DEPT_PALETTE.length];
+}
+function deptInitial(dept){ return esc((dept.nameAr || '؟').trim().charAt(0)); }
+
 function deptCard(dept){
   const list = DB.devicesByDept(dept.id);
   const st = DB.stats(list);
+  const color = deptColor(dept);
   const total = list.length || 1;
   const segs = [
     { v:st.valid, c:'#16a34a' }, { v:st.soon, c:'#f59e0b' },
     { v:st.expired, c:'#ef4444' }, { v:st.unknown, c:'#cbd5e1' }
   ].filter(x => x.v > 0).map(x => `<span style="width:${(x.v/total*100).toFixed(1)}%;background:${x.c}"></span>`).join('');
   const validPct = list.length ? Math.round(st.valid/list.length*100) : 0;
-  return `<a href="#/dept/${dept.id}" class="dept-card" style="--dc:${dept.color}">
+  return `<a href="#/dept/${dept.id}" class="dept-card" style="--dc:${color}">
     <div class="dc-top">
-      <div class="dc-icon" style="background:${dept.color}1a;color:${dept.color}">${dept.icon}</div>
+      <div class="dc-icon" style="background:${color}1a;color:${color}">${deptInitial(dept)}</div>
       <div class="dc-titles"><h3>${esc(dept.nameAr)}</h3><div class="en">${esc(dept.nameEn)}</div></div>
       <span class="dc-arrow">‹</span>
     </div>
@@ -448,8 +457,6 @@ function deptModal(dept){
     body: `<div class="form-grid">
       <div class="field full req"><label>الاسم بالعربية</label><input id="d-ar" value="${esc(dept?.nameAr||'')}"></div>
       <div class="field full"><label>الاسم بالإنجليزية</label><input id="d-en" value="${esc(dept?.nameEn||'')}"></div>
-      <div class="field"><label>الأيقونة (إيموجي)</label><input id="d-ico" value="${esc(dept?.icon||'🧫')}"></div>
-      <div class="field"><label>اللون</label><input id="d-color" type="color" value="${esc(dept?.color||'#2563eb')}"></div>
     </div>`,
     footer: `<button class="btn btn-primary" id="d-save">حفظ</button>
              ${edit?`<button class="btn btn-danger" id="d-del">حذف القسم</button>`:''}
@@ -458,7 +465,7 @@ function deptModal(dept){
       $('#d-cancel').onclick = close;
       $('#d-save').onclick = () => {
         const nameAr = $('#d-ar').value.trim(); if (!nameAr) return toast('أدخل اسم القسم','err');
-        const data = { nameAr, nameEn:$('#d-en').value.trim(), icon:$('#d-ico').value.trim()||'🧫', color:$('#d-color').value };
+        const data = { nameAr, nameEn:$('#d-en').value.trim() };
         if (edit) DB.updateDepartment(dept.id, data); else DB.addDepartment(data);
         close(); toast('تم الحفظ','ok'); router();
       };
@@ -493,7 +500,7 @@ function viewDepartment(deptId){
     <a href="#/departments" class="back-link">→ كل الأقسام</a>
     <div class="page-head">
       <div style="display:flex;gap:16px;align-items:center">
-        <span style="font-size:40px">${dept.icon}</span>
+        <div class="dc-icon" style="width:54px;height:54px;font-size:24px;font-weight:800;background:${deptColor(dept)}1a;color:${deptColor(dept)}">${deptInitial(dept)}</div>
         <div><h1>${esc(dept.nameAr)}</h1><p>${esc(dept.nameEn)}</p></div>
       </div>
       <div style="display:flex;gap:10px">
@@ -544,7 +551,7 @@ function viewDevice(id){
   const days = DB.daysUntil(d.dueDate);
 
   const rows = [
-    ['القسم', dept ? `${dept.icon} ${esc(dept.nameAr)}` : '—'],
+    ['القسم', dept ? esc(dept.nameAr) : '—'],
     ['الوحدة', esc(d.unit||'—')],
     ['التصنيف', catBadge(d.category)],
     ['الكود الجديد', `<span class="code">${esc(d.newCode||'—')}</span>`],
