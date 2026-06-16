@@ -21,7 +21,7 @@ const DB = (() => {
   function loadSettings() {
     let s = {};
     try { s = JSON.parse(localStorage.getItem(SET_KEY)) || {}; } catch {}
-    store.settings = Object.assign({ soonDays: SOON_DAYS, labName: 'مختبر سلامة الغذاء', baseUrl: '' }, s);
+    store.settings = Object.assign({ soonDays: SOON_DAYS, labName: 'مختبر كيمياء الأغذية', baseUrl: '' }, s);
   }
   function saveSettings(p) { Object.assign(store.settings, p); localStorage.setItem(SET_KEY, JSON.stringify(store.settings)); }
 
