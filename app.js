@@ -312,15 +312,24 @@ function pct(a,b){ return b ? Math.round(a/b*100) : 0; }
 function deptCard(dept){
   const list = DB.devicesByDept(dept.id);
   const st = DB.stats(list);
-  return `<a href="#/dept/${dept.id}" class="dept-card" style="border-top-color:${dept.color}">
-    <span class="dico">${dept.icon}</span>
-    <h3>${esc(dept.nameAr)}</h3>
-    <div class="en">${esc(dept.nameEn)}</div>
-    <div class="row">
-      <span><b>${list.length}</b>جهاز</span>
-      <span><b style="color:var(--green)">${st.valid}</b>سارية</span>
-      <span><b style="color:var(--amber)">${st.soon}</b>قريبة</span>
-      <span><b style="color:var(--red)">${st.expired}</b>منتهية</span>
+  const total = list.length || 1;
+  const segs = [
+    { v:st.valid, c:'#16a34a' }, { v:st.soon, c:'#f59e0b' },
+    { v:st.expired, c:'#ef4444' }, { v:st.unknown, c:'#cbd5e1' }
+  ].filter(x => x.v > 0).map(x => `<span style="width:${(x.v/total*100).toFixed(1)}%;background:${x.c}"></span>`).join('');
+  const validPct = list.length ? Math.round(st.valid/list.length*100) : 0;
+  return `<a href="#/dept/${dept.id}" class="dept-card" style="--dc:${dept.color}">
+    <div class="dc-top">
+      <div class="dc-icon" style="background:${dept.color}1a;color:${dept.color}">${dept.icon}</div>
+      <div class="dc-titles"><h3>${esc(dept.nameAr)}</h3><div class="en">${esc(dept.nameEn)}</div></div>
+      <span class="dc-arrow">‹</span>
+    </div>
+    <div class="dc-meter" title="${validPct}% سارية">${segs || '<span style="width:100%;background:#e2e8f0"></span>'}</div>
+    <div class="dc-stats">
+      <div class="dc-stat"><b>${list.length}</b><span>إجمالي</span></div>
+      <div class="dc-stat"><b style="color:var(--green)">${st.valid}</b><span>سارية</span></div>
+      <div class="dc-stat"><b style="color:var(--amber)">${st.soon}</b><span>قريبة</span></div>
+      <div class="dc-stat"><b style="color:var(--red)">${st.expired}</b><span>منتهية</span></div>
     </div>
   </a>`;
 }
