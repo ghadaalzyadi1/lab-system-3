@@ -77,7 +77,7 @@ function router(){
     const m = path.match(re);
     if (m){ fn(m); window.scrollTo(0,0); return; }
   }
-  layout(() => `<div class="empty"><div class="e-ico">🤷</div><h3>الصفحة غير موجودة</h3></div>`);
+  layout(() => `<div class="empty"><div class="e-ico"></div><h3>الصفحة غير موجودة</h3></div>`);
 }
 window.addEventListener('hashchange', router);
 
