@@ -243,7 +243,7 @@ function viewDashboard(){
   const alerts = DB.alerts();
   const depts = DB.departments();
 
-  setTimeout(() => { drawStatusChart(s); drawDeptChart(); }, 0);
+  setTimeout(() => { drawStatusChart(s); drawDeptChart(); drawConditionChart(s); drawCategoryChart(s); drawDueChart(); }, 0);
 
   const alertsHtml = alerts.length ? alerts.slice(0,8).map(({d,st,days}) => `
     <a href="#/device/${d.id}" class="alert-item ${st}">
@@ -271,6 +271,16 @@ function viewDashboard(){
       <div class="stat red"><div class="icon">⛔</div><div class="label">منتهية الصلاحية</div><div class="num">${s.expired}</div><div class="sub">تحتاج معايرة فورية</div></div>
     </div>
 
+    <h2 class="section-title">${ICONS.dept} الأقسام <span class="count">${depts.length}</span></h2>
+    <div class="dept-grid">${depts.map(deptCard).join('')}</div>
+
+    <div class="card" style="margin-top:26px">
+      <div class="card-head"><h3>🔔 تنبيهات المعايرة ${alerts.length?`<span class="muted">(${alerts.length})</span>`:''}</h3>
+        ${alerts.length>8?`<a href="#/reports" class="btn btn-ghost btn-sm">عرض الكل</a>`:''}</div>
+      <div class="card-body">${alertsHtml}</div>
+    </div>
+
+    <h2 class="section-title">📊 الرسوم البيانية</h2>
     <div class="grid-2">
       <div class="card">
         <div class="card-head"><h3>📈 توزيع المعايرة حسب القسم</h3></div>
@@ -281,15 +291,20 @@ function viewDashboard(){
         <div class="card-body" style="display:grid;place-items:center"><canvas id="statusChart" height="200"></canvas></div>
       </div>
     </div>
-
-    <div class="card" style="margin-top:22px">
-      <div class="card-head"><h3>🔔 تنبيهات المعايرة ${alerts.length?`<span class="muted">(${alerts.length})</span>`:''}</h3>
-        ${alerts.length>8?`<a href="#/reports" class="btn btn-ghost btn-sm">عرض الكل</a>`:''}</div>
-      <div class="card-body">${alertsHtml}</div>
+    <div class="grid-2" style="margin-top:22px">
+      <div class="card">
+        <div class="card-head"><h3>🛠️ حالة التشغيل</h3></div>
+        <div class="card-body" style="display:grid;place-items:center"><canvas id="conditionChart" height="200"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>🏷️ تصنيف الأجهزة</h3></div>
+        <div class="card-body" style="display:grid;place-items:center"><canvas id="categoryChart" height="200"></canvas></div>
+      </div>
     </div>
-
-    <h2 class="section-title">${ICONS.dept} الأقسام <span class="count">${depts.length}</span></h2>
-    <div class="dept-grid">${depts.map(deptCard).join('')}</div>
+    <div class="card" style="margin-top:22px">
+      <div class="card-head"><h3>📅 مواعيد المعايرة القادمة (شهرياً)</h3></div>
+      <div class="card-body"><canvas id="dueChart" height="120"></canvas></div>
+    </div>
   `;
 }
 function pct(a,b){ return b ? Math.round(a/b*100) : 0; }
@@ -336,6 +351,47 @@ function drawDeptChart(){
       ]},
     options:{ responsive:true, scales:{ x:{ stacked:true, ticks:{ font:{ family:'Tahoma' } } }, y:{ stacked:true, beginAtZero:true } },
       plugins:{ legend:{ position:'bottom', labels:{ font:{ family:'Tahoma' } } } } }
+  });
+}
+function drawConditionChart(s){
+  const c = $('#conditionChart'); if (!c || !window.Chart) return;
+  _charts.cond?.destroy();
+  _charts.cond = new Chart(c, {
+    type:'doughnut',
+    data:{ labels:['تعمل','تحت الصيانة','خارج الخدمة'],
+      datasets:[{ data:[s.operational,s.maintenance,s.out_of_service],
+        backgroundColor:['#16a34a','#d97706','#dc2626'], borderWidth:2, borderColor:'#fff' }] },
+    options:{ plugins:{ legend:{ position:'bottom', labels:{ font:{ family:'Tahoma' }, padding:14 } } }, cutout:'62%' }
+  });
+}
+function drawCategoryChart(s){
+  const c = $('#categoryChart'); if (!c || !window.Chart) return;
+  _charts.cat?.destroy();
+  _charts.cat = new Chart(c, {
+    type:'pie',
+    data:{ labels:['رئيسي','مساند'],
+      datasets:[{ data:[s.main,s.supporting], backgroundColor:['#2563eb','#7c3aed'], borderWidth:2, borderColor:'#fff' }] },
+    options:{ plugins:{ legend:{ position:'bottom', labels:{ font:{ family:'Tahoma' }, padding:14 } } } }
+  });
+}
+function drawDueChart(){
+  const c = $('#dueChart'); if (!c || !window.Chart) return;
+  const buckets = {};
+  DB.devices().forEach(d => {
+    const dt = DB.parseDate(d.dueDate); if (!dt) return;
+    const key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
+    buckets[key] = (buckets[key] || 0) + 1;
+  });
+  const keys = Object.keys(buckets).sort();
+  const labels = keys.map(k => { const [y,m] = k.split('-'); return `${m}/${y}`; });
+  const now = new Date(); now.setHours(0,0,0,0);
+  const colors = keys.map(k => { const [y,m] = k.split('-'); return (new Date(+y, +m-1, 28) < now) ? '#dc2626' : '#2563eb'; });
+  _charts.due?.destroy();
+  _charts.due = new Chart(c, {
+    type:'bar',
+    data:{ labels, datasets:[{ label:'عدد الأجهزة', data:keys.map(k=>buckets[k]), backgroundColor:colors, borderRadius:6 }] },
+    options:{ responsive:true, scales:{ x:{ ticks:{ font:{ family:'Tahoma' } } }, y:{ beginAtZero:true, ticks:{ precision:0 } } },
+      plugins:{ legend:{ display:false } } }
   });
 }
 
