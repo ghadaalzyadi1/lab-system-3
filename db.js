@@ -35,6 +35,7 @@ const DB = (() => {
     cal_company: d.calCompany || '', cal_date: d.calDate || '', due_date: d.dueDate || '', remarks: d.remarks || '',
    condition: d.condition || 'operational', certificate_path: d.certificatePath || null, cert_file: d.certFile || null,
    cert_url: d.certUrl || null, cert_type: d.certType || null
+  });
   const rowToDevice = (r) => ({
     id: r.id, departmentId: r.department_id, unit: r.unit || '', category: r.category || 'supporting',
     oldCode: r.old_code || '', newCode: r.new_code || '', name: r.name || '', manufacturer: r.manufacturer || '',
