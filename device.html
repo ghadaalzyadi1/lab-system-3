@@ -184,10 +184,11 @@ async function load() {
     document.getElementById('days-remaining').innerHTML = msg;
   }
 
-  // الشهادة
+ // الشهادة
   if (dev.certificate_url) {
     document.getElementById('cert-link').style.display='block';
     document.getElementById('cert-url').href = dev.certificate_url;
+    document.getElementById('cert-url').textContent = '📄 عرض الشهادة الحالية';
   }
 
   // الملاحظات
