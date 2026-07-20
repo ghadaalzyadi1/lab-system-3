@@ -607,7 +607,7 @@ function viewDevice(id){
             ${Auth.can('cert.upload')?`<button class="btn btn-ghost btn-sm" id="cert-up">⬆️ رفع / تحديث</button>`:''}
           </div>
           <div class="card-body" id="cert-area">
-            ${d.certificateId
+            ${(d.certUrl || d.certificateId)
               ? `<div style="display:flex;align-items:center;gap:14px;justify-content:space-between;flex-wrap:wrap">
                   <div style="display:flex;align-items:center;gap:12px"><span style="font-size:34px">📄</span>
                     <div><b>${esc(d.certFile||'شهادة معايرة')}</b><div class="muted" style="font-size:12px">رقم: ${esc(d.certNumber||'—')}</div></div></div>
