@@ -1195,3 +1195,40 @@ function viewSettings(){
 /* expose for inline handlers */
 window.downloadQR = downloadQR;
 window.$ = $;
+/* ---------- camera capture for certificates ---------- */
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'cert-cam') {
+    document.getElementById('cert-cam-input')?.click();
+  }
+});
+
+document.addEventListener('change', async (e) => {
+  if (!e.target || e.target.id !== 'cert-cam-input') return;
+  const f = e.target.files[0];
+  if (!f) return;
+  if (f.size > 15*1024*1024) return toast('الحجم يتجاوز 15MB','err');
+
+  const m = location.hash.match(/device\/([^\/]+)/);
+  const devId = m ? m[1] : null;
+  const d = devId ? DB.device(devId) : null;
+  if (!d) return toast('تعذر تحديد الجهاز','err');
+
+  toast('⏳ جاري رفع الصورة...','ok');
+  try {
+    const sb   = _sbClient();
+    const ext  = (f.name.split('.').pop()||'jpg').toLowerCase();
+    const path = `${d.id}/${Date.now()}.${ext}`;
+    const { error } = await sb.storage.from('certificates').upload(path, f, { upsert:true });
+    if (error) throw error;
+    const { data:{ publicUrl } } = sb.storage.from('certificates').getPublicUrl(path);
+    DB.updateDevice(d.id, {
+      certUrl: publicUrl,
+      certFile: 'شهادة-مصورة-' + DB.today().replace(/\//g,'-') + '.' + ext,
+      certType: f.type
+    }, Auth.current().name, 'تم تصوير ورفع شهادة معايرة بالكاميرا');
+    toast('تم رفع الشهادة ✅','ok');
+    viewDevice(d.id);
+  } catch(err) {
+    toast('فشل الرفع: ' + (err.message||err), 'err');
+  }
+});
