@@ -666,14 +666,20 @@ function downloadQR(id, label){
   });
 }
 
-/* ---------- certificate upload / view ---------- */
+/* ---------- certificate upload / view (Supabase Storage) ---------- */
+function _sbClient(){
+  if (!window._sb) window._sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  return window._sb;
+}
+
 function uploadCertModal(d){
   modal({
     title:'رفع شهادة المعايرة',
     body:`<div class="field full"><label>اختر ملف (PDF أو صورة)</label>
       <input type="file" id="cert-file" accept="application/pdf,image/*"></div>
       <div class="field full"><label>رقم الشهادة (اختياري)</label><input id="cert-num" value="${esc(d.certNumber||'')}"></div>
-      <p class="muted" style="font-size:12px">يُحفظ الملف محلياً في المتصفح (IndexedDB).</p>`,
+      <p class="muted" style="font-size:12px">يُحفظ الملف سحابياً — متاح من أي جهاز.</p>
+      <div id="cert-up-status" class="muted" style="font-size:12px;margin-top:6px"></div>`,
     footer:`<button class="btn btn-primary" id="cert-save">رفع وحفظ</button><button class="btn btn-ghost" id="cert-cancel">إلغاء</button>`,
     onOpen:(close)=>{
       $('#cert-cancel').onclick = close;
@@ -681,17 +687,66 @@ function uploadCertModal(d){
         const f = $('#cert-file').files[0];
         if (!f) return toast('اختر ملفاً','err');
         if (f.size > 15*1024*1024) return toast('الحجم يتجاوز 15MB','err');
-        await DB.saveCertificate(d.id, f, f.name, f.type);
-        DB.updateDevice(d.id, { certificateId:d.id, certFile:f.name, certNumber:$('#cert-num').value.trim()||d.certNumber },
-          Auth.current().name, `تم رفع شهادة معايرة: ${f.name}`);
-        close(); toast('تم رفع الشهادة','ok'); viewDevice(d.id);
+
+        $('#cert-save').disabled = true;
+        $('#cert-up-status').textContent = '⏳ جاري الرفع...';
+
+        try {
+          const sb   = _sbClient();
+          const ext  = (f.name.split('.').pop()||'pdf').toLowerCase();
+          const path = `${d.id}/${Date.now()}.${ext}`;
+
+          const { error } = await sb.storage.from('certificates').upload(path, f, { upsert:true });
+          if (error) throw error;
+
+          const { data:{ publicUrl } } = sb.storage.from('certificates').getPublicUrl(path);
+
+          DB.updateDevice(d.id, {
+            certUrl: publicUrl,
+            certFile: f.name,
+            certType: f.type,
+            certNumber: $('#cert-num').value.trim()||d.certNumber
+          }, Auth.current().name, `تم رفع شهادة معايرة: ${f.name}`);
+
+          close(); toast('تم رفع الشهادة ✅','ok'); viewDevice(d.id);
+        } catch(e) {
+          $('#cert-save').disabled = false;
+          $('#cert-up-status').textContent = '';
+          toast('فشل الرفع: '+(e.message||e),'err');
+        }
       };
     }
   });
 }
+
 async function viewCertificate(d){
+  // الأولوية للرابط السحابي
+  if (d.certUrl){
+    const isPdf = (d.certType||'').includes('pdf') || /\.pdf(\?|$)/i.test(d.certUrl) || /\.pdf$/i.test(d.certFile||'');
+    modal({
+      title:`شهادة: ${esc(d.certFile||'المعايرة')}`,
+      body: isPdf
+        ? `<iframe src="${d.certUrl}" style="width:100%;height:65vh;border:none;border-radius:10px"></iframe>`
+        : `<img src="${d.certUrl}" style="width:100%;border-radius:10px">`,
+      footer:`<a class="btn btn-primary" href="${d.certUrl}" target="_blank" download="${esc(d.certFile||'certificate')}">⬇️ تحميل</a>
+              <a class="btn btn-ghost" href="${d.certUrl}" target="_blank">🔗 فتح في تبويب جديد</a>
+              ${Auth.can('cert.delete')?`<button class="btn btn-danger" id="cert-del">🗑️ حذف</button>`:''}
+              <button class="btn btn-ghost" id="cert-close">إغلاق</button>`,
+      onOpen:(close)=>{
+        $('#cert-close').onclick = close;
+        if ($('#cert-del')) $('#cert-del').onclick = async () => {
+          if (!confirm('حذف الشهادة؟')) return;
+          DB.updateDevice(d.id, { certUrl:'', certFile:'', certType:'' }, Auth.current().name, 'تم حذف شهادة المعايرة');
+          close(); toast('تم الحذف','ok'); viewDevice(d.id);
+        };
+      }
+    });
+    return;
+  }
+
+  // احتياطي: الشهادات القديمة المحفوظة محلياً (IndexedDB)
   const rec = await DB.getCertificate(d.id);
-  if (!rec){ toast('الملف غير متوفر','err'); return; }
+  if (!rec){ toast('الملف غير متوفر — ارفعي الشهادة من جديد','err'); return; }
   const url = URL.createObjectURL(rec.blob);
   const isPdf = (rec.type||'').includes('pdf') || /\.pdf$/i.test(rec.filename||'');
   modal({
@@ -700,16 +755,9 @@ async function viewCertificate(d){
       ? `<iframe src="${url}" style="width:100%;height:65vh;border:none;border-radius:10px"></iframe>`
       : `<img src="${url}" style="width:100%;border-radius:10px">`,
     footer:`<a class="btn btn-primary" href="${url}" download="${esc(rec.filename||'certificate')}">⬇️ تحميل</a>
-            ${Auth.can('cert.delete')?`<button class="btn btn-danger" id="cert-del">🗑️ حذف الشهادة</button>`:''}
             <button class="btn btn-ghost" id="cert-close">إغلاق</button>`,
     onOpen:(close)=>{
       $('#cert-close').onclick = () => { URL.revokeObjectURL(url); close(); };
-      if ($('#cert-del')) $('#cert-del').onclick = async () => {
-        if (!confirm('حذف الشهادة؟')) return;
-        await DB.deleteCertificate(d.id);
-        DB.updateDevice(d.id, { certificateId:'', certFile:'' }, Auth.current().name, 'تم حذف شهادة المعايرة');
-        close(); toast('تم الحذف','ok'); viewDevice(d.id);
-      };
     }
   });
 }
