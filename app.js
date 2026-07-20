@@ -604,8 +604,11 @@ function viewDevice(id){
 
         <div class="card" style="margin-top:20px">
           <div class="card-head"><h3>📄 شهادة المعايرة</h3>
-            ${Auth.can('cert.upload')?`<button class="btn btn-ghost btn-sm" id="cert-up">⬆️ رفع / تحديث</button>`:''}
-          </div>
+          ${Auth.can('cert.upload')?`<div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn btn-ghost btn-sm" id="cert-up">⬆️ رفع / تحديث</button>
+              <button class="btn btn-ghost btn-sm" id="cert-cam">📷 تصوير بالكاميرا</button>
+              <input type="file" id="cert-cam-input" accept="image/*" capture="environment" style="display:none">
+            </div>`:''}
           <div class="card-body" id="cert-area">
             ${(d.certUrl || d.certificateId)
               ? `<div style="display:flex;align-items:center;gap:14px;justify-content:space-between;flex-wrap:wrap">
