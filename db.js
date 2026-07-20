@@ -34,15 +34,15 @@ const DB = (() => {
     serial: d.serial || '', model: d.model || '', test: d.test || '', cert_number: d.certNumber || '',
     cal_company: d.calCompany || '', cal_date: d.calDate || '', due_date: d.dueDate || '', remarks: d.remarks || '',
    condition: d.condition || 'operational', certificate_path: d.certificatePath || null, cert_file: d.certFile || null,
-cert_url: d.certUrl || null, cert_type: d.certType || null
+   cert_url: d.certUrl || null, cert_type: d.certType || null
   const rowToDevice = (r) => ({
     id: r.id, departmentId: r.department_id, unit: r.unit || '', category: r.category || 'supporting',
     oldCode: r.old_code || '', newCode: r.new_code || '', name: r.name || '', manufacturer: r.manufacturer || '',
     serial: r.serial || '', model: r.model || '', test: r.test || '', certNumber: r.cert_number || '',
     calCompany: r.cal_company || '', calDate: r.cal_date || '', dueDate: r.due_date || '', remarks: r.remarks || '',
     condition: r.condition || 'operational', certificatePath: r.certificate_path || '', certFile: r.cert_file || '',
-certUrl: r.cert_url || '', certType: r.cert_type || '',
-certificateId: r.certificate_path ? r.id : '', history: []
+    certUrl: r.cert_url || '', certType: r.cert_type || '',
+    certificateId: r.certificate_path ? r.id : '', history: []
   });
 
   /* ---------- error helper ---------- */
